@@ -26,6 +26,45 @@ local config = {
 
     -- Show an in-game system chat message with the result.
     Announce = true,
+
+    ------------------------------------------------------------------
+    -- Whip item (requires the PalWhipItem PalSchema mod to be installed)
+    ------------------------------------------------------------------
+
+    -- Require the crafted "Pal Whip" item in your inventory before the
+    -- whip key does anything. Set to false to go back to pure-hotkey mode
+    -- (e.g. if you don't use PalSchema).
+    RequireWhipItem = true,
+
+    -- Static item id of the whip. Must match the id in
+    -- PalWhipItem/items/palwhip.json.
+    WhipItemId = "PalWhip",
+
+    ------------------------------------------------------------------
+    -- Sound
+    ------------------------------------------------------------------
+
+    -- Play a sound when the whip cracks.
+    PlaySound = true,
+
+    -- Row name from the game's SoundID data table (DT_SoundID). If set,
+    -- this is tried first via PalSoundUtility.PlaySoundByActor.
+    -- Leave empty to use SoundEventPatterns below instead.
+    SoundID = "",
+
+    -- Exact name of a loaded AkAudioEvent (Wwise sound event) to play.
+    -- Press the SoundDumpKey in-game to print all loaded event names to
+    -- the UE4SS console, then paste your favorite here.
+    SoundEventName = "",
+
+    -- If SoundID and SoundEventName are empty, the first loaded
+    -- AkAudioEvent whose name contains one of these (case-insensitive)
+    -- patterns is used. Patterns are tried in order.
+    SoundEventPatterns = { "whip", "attack_hit", "melee", "swing", "decide" },
+
+    -- Debug key: dumps all loaded AkAudioEvent names to the UE4SS console
+    -- so you can pick a SoundEventName. Set to "" to disable.
+    SoundDumpKey = "F8",
 }
 
 return config

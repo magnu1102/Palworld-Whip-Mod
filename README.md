@@ -1,39 +1,43 @@
 # PalWhip 🔥🪢
 
-A tiny Palworld mod with exactly one job: **crack the whip and get your base pals back to normal.**
+A Palworld mod with exactly one job: **craft a whip, crack it, and get your base pals back to normal.**
 
 Depressed? Ulcer? Sprained ankle? Fractured? Weakened? Slacking with zero SAN?
-Press the whip key and every one of *your* pals around you is instantly:
+Craft the **Pal Whip**, press the whip key (default **F7**) near your base, and every one of
+*your* pals around you is instantly — with a satisfying crack sound:
 
 - **Cured of sickness** — Depression, Ulcer, Sprain, Fracture, Weakness, Cold, etc.
 - **Restored to full sanity (SAN 100)** — no more moping around the base
 - **Healed to full HP** (optional, on by default)
 - **Fed to a full stomach** (optional, off by default)
 
-It's a [UE4SS](https://docs.ue4ss.com/) Lua mod — no game files are modified and it can be
-removed at any time by deleting one folder.
+No game files are modified; uninstall by deleting two folders.
 
-> **Design note:** the "whip" is a hotkey (default **F7**), not a literal inventory item.
-> Adding a real craftable whip weapon would require repacking game assets (.pak/.utoc) in an
-> Unreal Engine project. The hotkey approach does the same job, survives game updates far
-> better, and installs in one minute.
+## The two halves
+
+| Folder | Framework | What it does |
+|---|---|---|
+| `PalWhip/` | UE4SS (Lua) | The whip crack: keybind, curing logic, sound, inventory check |
+| `PalWhipItem/` | [PalSchema](https://okaetsu.github.io/PalSchema/) (JSON) | The craftable **Pal Whip** item: icon, name, crafting recipe |
+
+The item is a real inventory item with a custom icon, craftable at the **Primitive Workbench**
+(5× Leather + 10× Wood). While it's in your inventory, the whip key works; without it you get
+told to go craft one. (If you don't want the item requirement — e.g. you skip PalSchema —
+set `RequireWhipItem = false` in the Lua config and it falls back to pure-hotkey mode.)
 
 ## Installation
 
 1. **Install UE4SS for Palworld** (the experimental build required by current Palworld):
    - Easiest: subscribe to *UE4SS Experimental (Palworld)* on the Steam Workshop, **or**
-   - Manual: follow the [PalMods UE4SS guide](https://www.palmods.gg/guides/modding/ue4ss) /
-     [pwmodding.wiki](https://pwmodding.wiki/docs/category/lua-modding) and drop UE4SS into
-     `Palworld\Pal\Binaries\Win64\`.
-2. **Copy the `PalWhip` folder** from this repo into your UE4SS `Mods` directory:
-   - Newer UE4SS builds: `Palworld\Pal\Binaries\Win64\ue4ss\Mods\PalWhip`
-   - Older UE4SS builds: `Palworld\Pal\Binaries\Win64\Mods\PalWhip`
-3. That's it for recent UE4SS versions — the included `enabled.txt` auto-enables the mod.
-   If your UE4SS uses `mods.txt`, add this line to it:
-   ```
-   PalWhip : 1
-   ```
-4. Launch the game, walk into your base, press **F7**. You'll get a chat message like:
+   - Manual: follow the [PalMods UE4SS guide](https://www.palmods.gg/guides/modding/ue4ss).
+2. **Install [PalSchema](https://www.nexusmods.com/palworld/mods/3037)** (also on the Steam
+   Workshop) — it lives in `Pal\Binaries\Win64\ue4ss\Mods\PalSchema`.
+3. Copy **`PalWhip`** into `Pal\Binaries\Win64\ue4ss\Mods\`
+   (older UE4SS builds use `Pal\Binaries\Win64\Mods\`; the included `enabled.txt`
+   auto-enables it — if your UE4SS uses `mods.txt`, add `PalWhip : 1`).
+4. Copy **`PalWhipItem`** into `Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\`.
+5. Launch the game. Craft the **Pal Whip** at a Primitive Workbench, walk into your base,
+   press **F7**:
    ```
    *CRACK* 4 pal(s) snapped back to normal. Back to work!
    ```
@@ -53,38 +57,74 @@ Edit [PalWhip/Scripts/config.lua](PalWhip/Scripts/config.lua):
 | `FillStomach` | `false` | Also refill hunger |
 | `Cooldown` | `1.0` | Seconds between cracks |
 | `Announce` | `true` | Show the in-game chat message |
+| `RequireWhipItem` | `true` | Whip key only works with the crafted item in inventory |
+| `WhipItemId` | `"PalWhip"` | Item id (must match `PalWhipItem/items/palwhip.json`) |
+| `PlaySound` | `true` | Play a sound on crack |
+| `SoundID` | `""` | Row name from the game's `DT_SoundID` table (tried first if set) |
+| `SoundEventName` | `""` | Exact loaded Wwise `AkAudioEvent` name to play |
+| `SoundEventPatterns` | whip, … | Fallback: first loaded event whose name contains a pattern |
+| `SoundDumpKey` | `"F8"` | Prints all loaded sound event names to the UE4SS console |
 
 Changes apply after a game restart, or hot-reload mods with **Ctrl+R** in the UE4SS console.
 
+### Picking the perfect crack sound
+
+Palworld uses Wwise audio, and its sound event names aren't publicly documented, so PalWhip
+discovers them at runtime: by default it plays the first loaded event matching one of the
+`SoundEventPatterns`. To pick your favorite:
+
+1. In-game, press **F8** — every loaded sound event name is printed to the UE4SS console.
+2. Put the exact name into `SoundEventName` in `config.lua` and hot-reload (**Ctrl+R**).
+
+### Tweaking the item
+
+Edit [PalWhipItem/items/palwhip.json](PalWhipItem/items/palwhip.json) — recipe materials,
+price, weight, name, description. The icon is
+[PalWhipItem/resources/images/whip.png](PalWhipItem/resources/images/whip.png); replace it
+with any PNG you like (it's referenced as `$resource/PalWhipItem/whip`). The icon in this
+repo is generated by [tools/make_icon.ps1](tools/make_icon.ps1).
+
 ## How it works
 
-On keypress the mod finds all loaded `PalCharacter` actors, filters them to owned,
-non-player pals within range of you, and resets the status fields on each pal's
-`PalIndividualCharacterParameter.SaveParameter`:
+- **Item**: PalSchema registers `PalWhip` as a `Generic` static item (`Material` /
+  `MaterialProccessing`, Rank 1 → craftable at the Primitive Workbench) with `bNotConsumed`
+  so crafting-station handling never eats it, plus a `DT_ItemRecipeDataTable` row for the
+  recipe and a custom icon imported from the PNG.
+- **Crack**: on keypress the Lua mod checks your inventory
+  (`PalUtility.GetLocalInventoryData` → `CountItemNum("PalWhip")`), plays a sound
+  (`PalSoundUtility.PlaySoundByActor` for `SoundID`, else
+  `PlayAkEventSoundByActor` with a discovered `AkAudioEvent`), then finds all loaded
+  `PalCharacter` actors, filters to owned non-player pals in range, and resets the status
+  fields on each pal's `PalIndividualCharacterParameter.SaveParameter`:
+  `WorkerSick → None`, `SanityValue → 100`, `HP → GetMaxHP()`, `FullStomach → max`.
 
-- `WorkerSick` → `None` (this is the field behind all the base "sickness" statuses)
-- `SanityValue` → `100`
-- `HP` → `GetMaxHP()` (optional)
-- `FullStomach` → `MaxFullStomach` (optional)
-
-Every game-API access is wrapped in `pcall`, so if a Palworld update renames a field the
-mod degrades gracefully (skips that fix and logs) instead of crashing the game.
+Every game-API access is wrapped in `pcall`, so if a Palworld update renames a field the mod
+degrades gracefully (skips that fix and logs) instead of crashing the game.
 
 ## Notes & limitations
 
-- **Single player / host only.** Pal state lives on the server, so on a dedicated server
-  the mod must be installed server-side; pressing the key as a pure client does nothing.
+- **Single player / host only.** Pal state lives on the server; on a dedicated server both
+  mods must be installed server-side.
 - Works on the pals near *you* — stand in (or near) your base when you crack the whip.
-- No game assets are touched; uninstall by deleting the `PalWhip` folder.
-- Tested against the Palworld 1.x + UE4SS experimental combination current as of mid-2026.
-  If a patch breaks a field name, check the UE4SS console log for `[PalWhip]` messages.
+- The whip is carried, not wielded — it doesn't appear in your hand. Giving it an equippable
+  actor (a held model + swing animation) requires packaging a Blueprint with the
+  [Palworld Modding Kit](https://pwmodding.wiki/docs/category/palworld-modding-kit); the
+  item JSON's `actorClass` field is where such a Blueprint would plug in.
+- Verified against PalSchema's documented item/recipe/resource formats and the game's
+  dumped SDK headers as of mid-2026. If a patch breaks a field name, check the UE4SS
+  console for `[PalWhip]` messages.
 
 ## Repo layout
 
 ```
-PalWhip/
-├── enabled.txt          # auto-enable marker for UE4SS
+PalWhip/                     # UE4SS Lua mod
+├── enabled.txt
 └── Scripts/
-    ├── main.lua         # the mod
-    └── config.lua       # user settings
+    ├── main.lua             # whip logic: cure, sound, inventory gate
+    └── config.lua           # user settings
+PalWhipItem/                 # PalSchema mod
+├── items/palwhip.json       # item definition + crafting recipe
+└── resources/images/whip.png# inventory icon
+tools/make_icon.ps1          # regenerates the icon PNG
+package.ps1                  # builds PalWhip.zip for sharing
 ```

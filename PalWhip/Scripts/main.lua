@@ -22,8 +22,17 @@ local HEAL_HP       = (config.HealHP       ~= false)
 local FILL_STOMACH  = (config.FillStomach  == true)
 local COOLDOWN      = config.Cooldown      or 1.0
 local ANNOUNCE      = (config.Announce     ~= false)
+local REQUIRE_ITEM  = (config.RequireWhipItem ~= false)
+local WHIP_ITEM_ID  = config.WhipItemId    or "PalWhip"
+local PLAY_SOUND    = (config.PlaySound    ~= false)
+local SOUND_ID      = config.SoundID       or ""
+local SOUND_EVENT   = config.SoundEventName or ""
+local SOUND_PATTERNS = config.SoundEventPatterns or { "whip", "attack_hit", "melee", "swing", "decide" }
+local SOUND_DUMP_KEY = config.SoundDumpKey or "F8"
 
 local lastCrack = 0.0
+local cachedSoundEvent = nil
+local warnedNoSound = false
 
 local function log(msg)
     print(string.format("[PalWhip] %s\n", tostring(msg)))
@@ -59,6 +68,100 @@ local function announce(context, text)
         end
     end)
     log(text)
+end
+
+-- Returns true if the player has the whip item (or if the item gate is off).
+local function hasWhipItem(pawn)
+    if not REQUIRE_ITEM then return true end
+    local ok, count = pcall(function()
+        local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
+        local inv = PalUtility:GetLocalInventoryData(pawn)
+        if inv and inv:IsValid() then
+            return inv:CountItemNum(FName(WHIP_ITEM_ID))
+        end
+        return nil
+    end)
+    if ok and count ~= nil then
+        return count > 0
+    end
+    -- Inventory API unavailable (renamed by a patch, or PalSchema item
+    -- missing): don't lock the player out of the whip entirely.
+    log("Could not check inventory for the whip item, allowing whip anyway")
+    return true
+end
+
+-- Finds a loaded Wwise sound event matching SoundEventName / SoundEventPatterns.
+local function findSoundEvent()
+    if cachedSoundEvent and cachedSoundEvent:IsValid() then
+        return cachedSoundEvent
+    end
+    cachedSoundEvent = nil
+    local ok, events = pcall(function() return FindAllOf("AkAudioEvent") end)
+    if not ok or not events then return nil end
+
+    local wanted = string.lower(SOUND_EVENT)
+    for _, pattern in ipairs(wanted ~= "" and { wanted } or SOUND_PATTERNS) do
+        pattern = string.lower(pattern)
+        for _, ev in ipairs(events) do
+            if ev and ev:IsValid() then
+                local name = string.lower(ev:GetFName():ToString())
+                if (wanted ~= "" and name == pattern) or (wanted == "" and string.find(name, pattern, 1, true)) then
+                    cachedSoundEvent = ev
+                    log(string.format("Using sound event '%s'", ev:GetFName():ToString()))
+                    return ev
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function playCrackSound(pawn)
+    if not PLAY_SOUND then return end
+    local PalSound = StaticFindObject("/Script/Pal.Default__PalSoundUtility")
+    if not PalSound or not PalSound:IsValid() then return end
+
+    -- 1) Explicit SoundID row from DT_SoundID, if configured.
+    if SOUND_ID ~= "" then
+        local ok = pcall(function()
+            PalSound:PlaySoundByActor(pawn, { Key = FName(SOUND_ID) }, { FadeInTime = 0 })
+        end)
+        if ok then return end
+        log(string.format("PlaySoundByActor failed for SoundID '%s', trying sound events", SOUND_ID))
+    end
+
+    -- 2) Loaded Wwise event by name/pattern.
+    local ev = findSoundEvent()
+    if ev then
+        local ok = pcall(function() PalSound:PlayAkEventSoundByActor(pawn, ev) end)
+        if not ok then
+            cachedSoundEvent = nil
+            log("PlayAkEventSoundByActor failed for the selected event")
+        end
+    elseif not warnedNoSound then
+        warnedNoSound = true
+        log(string.format("No sound event matched (press %s to list available events, then set SoundEventName in config.lua)", SOUND_DUMP_KEY))
+    end
+end
+
+local function dumpSoundEvents()
+    local ok, events = pcall(function() return FindAllOf("AkAudioEvent") end)
+    if not ok or not events then
+        log("No AkAudioEvent objects loaded yet - enter a world first")
+        return
+    end
+    local names = {}
+    for _, ev in ipairs(events) do
+        if ev and ev:IsValid() then
+            table.insert(names, ev:GetFName():ToString())
+        end
+    end
+    table.sort(names)
+    log(string.format("---- %d loaded sound events ----", #names))
+    for _, name in ipairs(names) do
+        print(string.format("[PalWhip]   %s\n", name))
+    end
+    log("Set SoundEventName in config.lua to one of the names above")
 end
 
 -- Returns the individual character parameter object for a pal actor, or nil.
@@ -141,6 +244,13 @@ local function crackWhip()
         return
     end
 
+    if not hasWhipItem(pawn) then
+        announce(pawn, "You need a Pal Whip in your inventory to crack the whip!")
+        return
+    end
+
+    playCrackSound(pawn)
+
     local ploc = tryGet(function() return pawn:K2_GetActorLocation() end)
     local rangeSq = RANGE > 0 and (RANGE * RANGE) or nil
 
@@ -201,5 +311,11 @@ RegisterKeyBind(keyEnum, {}, function()
     ExecuteInGameThread(crackWhip)
 end)
 
-log(string.format("Loaded. Press %s to crack the whip (range %.0f, owned-only: %s).",
-    WHIP_KEY, RANGE, tostring(OWNED_ONLY)))
+if SOUND_DUMP_KEY ~= "" and Key[SOUND_DUMP_KEY] then
+    RegisterKeyBind(Key[SOUND_DUMP_KEY], {}, function()
+        ExecuteInGameThread(dumpSoundEvents)
+    end)
+end
+
+log(string.format("Loaded. Press %s to crack the whip (range %.0f, owned-only: %s, item required: %s).",
+    WHIP_KEY, RANGE, tostring(OWNED_ONLY), tostring(REQUIRE_ITEM)))

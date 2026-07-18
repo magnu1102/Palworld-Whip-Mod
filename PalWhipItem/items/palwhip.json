@@ -1,0 +1,25 @@
+{
+    "PalWhip": {
+        "Type": "Generic",
+        "Name": "Pal Whip",
+        "Description": "A well-worn leather whip. Carry it and crack it (default: F7) to snap nearby base Pals out of depression, injuries and slacking. Motivation guaranteed.",
+        "IconTexture": "$resource/PalWhipItem/whip",
+        "TypeA": "Material",
+        "TypeB": "MaterialProccessing",
+        "Rank": 1,
+        "Rarity": 1,
+        "Price": 1000,
+        "MaxStackCount": 1,
+        "Weight": 2.0,
+        "SortId": 9500,
+        "bNotConsumed": true,
+        "Recipe": {
+            "Product_Count": 1,
+            "WorkAmount": 800.0,
+            "Material1_Count": 5,
+            "Material1_Id": "Leather",
+            "Material2_Count": 10,
+            "Material2_Id": "Wood"
+        }
+    }
+}
