@@ -13,12 +13,17 @@ Craft the **Pal Whip**, press the whip key (default **F7**) near your base, and 
 
 No game files are modified; uninstall by deleting two folders.
 
-## The two halves
+Also on board: **PalBoombox** — a craftable boombox that plays sea shanties with real
+spatial audio (see [The Boombox](#the-boombox-)).
+
+## The mod parts
 
 | Folder | Framework | What it does |
 |---|---|---|
 | `PalWhip/` | UE4SS (Lua) | The whip crack: keybind, curing logic, sound, inventory check |
 | `PalWhipItem/` | [PalSchema](https://okaetsu.github.io/PalSchema/) (JSON) | The craftable **Pal Whip** item: icon, name, crafting recipe |
+| `PalBoombox/` | UE4SS (Lua) + audio companion | Placeable boombox with spatial shanty playback |
+| `PalBoomboxItem/` | PalSchema (JSON) | The craftable **Boombox** item: icon, recipe |
 
 The Pal Whip is a real **equippable melee weapon** with a custom icon, craftable at the
 **Primitive Workbench** (5× Leather + 10× Wood). Put it on your weapon wheel, hold it in
@@ -37,10 +42,11 @@ latter is pure-hotkey mode for players who skip PalSchema.)
    - Manual: follow the [PalMods UE4SS guide](https://www.palmods.gg/guides/modding/ue4ss).
 2. **Install [PalSchema](https://www.nexusmods.com/palworld/mods/3037)** (also on the Steam
    Workshop) — it lives in `Pal\Binaries\Win64\ue4ss\Mods\PalSchema`.
-3. Copy **`PalWhip`** into `Pal\Binaries\Win64\ue4ss\Mods\`
+3. Copy **`PalWhip`** and **`PalBoombox`** into `Pal\Binaries\Win64\ue4ss\Mods\`
    (older UE4SS builds use `Pal\Binaries\Win64\Mods\`; the included `enabled.txt`
-   auto-enables it — if your UE4SS uses `mods.txt`, add `PalWhip : 1`).
-4. Copy **`PalWhipItem`** into `Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\`.
+   auto-enables them — if your UE4SS uses `mods.txt`, add `PalWhip : 1` etc.).
+4. Copy **`PalWhipItem`** and **`PalBoomboxItem`** into
+   `Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\`.
 5. Launch the game. Craft the **Pal Whip** at a Primitive Workbench, walk into your base,
    press **F7**:
    ```
@@ -109,6 +115,43 @@ mesh packaged with the [Palworld Modding Kit](https://pwmodding.wiki/docs/catego
 (UE 5.1) into a `_P` patch pak — the `actorClass` field is exactly where such a Blueprint
 would plug in later.
 
+## The Boombox 📻
+
+Craft the **Boombox** at a Primitive Workbench (20× Wood + 10× Stone), then:
+
+- **F9** — set the boombox down where you stand / pick it back up. The music stays at
+  that spot: walk away and it fades with distance; turn your camera and it pans between
+  your left and right ear. Genuine spatial audio.
+- **F10** — next track.
+
+It ships with four hand-arranged 8-bit-style instrumental sea shanties, synthesized from
+the traditional (public-domain) melodies by [tools/make_shanties.py](tools/make_shanties.py):
+
+- *Wellerman*
+- *Leave Her Johnny*
+- *Bully in the Alley*
+- *Drunken Sailor*
+
+**Add your own music:** drop any `.wav` / `.mp3` / `.wma` into `PalBoombox\music\` —
+your own recordings of the real shanties, or anything else. F10 cycles through whatever
+is in the folder (alphabetical).
+
+### How the spatial audio works
+
+Palworld's Wwise audio engine can't play arbitrary files, so PalBoombox does it outside
+the game: the Lua mod samples your position and camera yaw ~10×/second, computes
+inverse-square distance falloff plus a camera-relative stereo pan (with a slight muffle
+for sounds behind you), and streams `volume`/`balance` values over a file-based IPC
+channel (`PalBoombox\ipc\`) to a tiny companion process
+([boombox_companion.ps1](PalBoombox/companion/boombox_companion.ps1) — pure PowerShell,
+WPF `MediaPlayer`, zero dependencies). The companion loops the track, follows the
+volume/pan stream, auto-starts when you first place the boombox, and exits itself when
+Palworld closes.
+
+Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
+keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
+item requirement, and companion auto-start.
+
 ## How it works
 
 - **Item**: PalSchema registers `PalWhip` as a `Weapon` static item (`Weapon` /
@@ -143,14 +186,23 @@ degrades gracefully (skips that fix and logs) instead of crashing the game.
 ## Repo layout
 
 ```
-PalWhip/                     # UE4SS Lua mod
+PalWhip/                       # UE4SS Lua mod (whip)
 ├── enabled.txt
-└── Scripts/
-    ├── main.lua             # whip logic: cure, sound, inventory gate
-    └── config.lua           # user settings
-PalWhipItem/                 # PalSchema mod
-├── items/palwhip.json       # item definition + crafting recipe
-└── resources/images/whip.png# inventory icon
-tools/make_icon.ps1          # regenerates the icon PNG
-package.ps1                  # builds PalWhip.zip for sharing
+└── Scripts/main.lua, config.lua
+PalWhipItem/                   # PalSchema mod (whip item + icon)
+├── items/palwhip.json
+└── resources/images/whip.png
+PalBoombox/                    # UE4SS Lua mod (boombox)
+├── enabled.txt
+├── Scripts/main.lua, config.lua
+├── companion/boombox_companion.ps1   # spatial audio player process
+├── music/*.wav                # shanties (generated; add your own files here)
+└── ipc/                       # runtime state files (mod <-> companion)
+PalBoomboxItem/                # PalSchema mod (boombox item + icon)
+├── items/palboombox.json
+└── resources/images/boombox.png
+tools/make_icon.ps1            # regenerates the whip icon
+tools/make_boombox_icon.ps1    # regenerates the boombox icon
+tools/make_shanties.py         # regenerates the shanty WAVs
+package.ps1                    # builds PalWhip.zip for sharing
 ```

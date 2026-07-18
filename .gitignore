@@ -3,3 +3,10 @@ PalWhip.zip
 node_modules/
 package.json
 package-lock.json
+
+# Generated audio (rebuild with: python tools/make_shanties.py)
+PalBoombox/music/*.wav
+
+# Runtime IPC files
+PalBoombox/ipc/state.txt
+PalBoombox/ipc/companion.txt

@@ -1,0 +1,25 @@
+{
+    "PalBoombox": {
+        "Type": "Generic",
+        "Name": "Boombox",
+        "Description": "A sturdy shipboard speaker loaded with sea shanties. Set it down (default: F9) and it keeps singing where you left it - walk away and the music fades astern. Next song: F10.",
+        "IconTexture": "$resource/PalBoomboxItem/boombox",
+        "TypeA": "Material",
+        "TypeB": "MaterialProccessing",
+        "Rank": 1,
+        "Rarity": 1,
+        "Price": 2000,
+        "MaxStackCount": 1,
+        "Weight": 4.0,
+        "SortId": 9501,
+        "bNotConsumed": true,
+        "Recipe": {
+            "Product_Count": 1,
+            "WorkAmount": 1200.0,
+            "Material1_Count": 20,
+            "Material1_Id": "Wood",
+            "Material2_Count": 10,
+            "Material2_Id": "Stone"
+        }
+    }
+}
