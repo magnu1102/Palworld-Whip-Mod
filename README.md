@@ -35,7 +35,15 @@ latter is pure-hotkey mode for players who skip PalSchema.)
 > at your own pals *hurts them* like any weapon would — the healing crack is the whip key,
 > not the swing.
 
-## Installation
+## Easy install (for friends)
+
+Extract the whole mod zip somewhere, then right-click **`install.ps1`** → *Run with
+PowerShell*. It finds your Steam Palworld automatically (or asks), downloads UE4SS and
+PalSchema from their official GitHub releases if you don't have them, applies the required
+settings, and installs all four mod parts. Safe to re-run — it skips anything already
+installed. Close Palworld first.
+
+## Manual installation
 
 1. **Install UE4SS for Palworld** (the experimental build required by current Palworld):
    - Easiest: subscribe to *UE4SS Experimental (Palworld)* on the Steam Workshop, **or**
@@ -170,10 +178,22 @@ item requirement, and companion auto-start.
 Every game-API access is wrapped in `pcall`, so if a Palworld update renames a field the mod
 degrades gracefully (skips that fix and logs) instead of crashing the game.
 
+## Multiplayer (hosted co-op)
+
+- **The whip cure is host-side.** Pal status lives on the host's machine, so the *host*
+  cracking the whip cures the base for everyone — friends see the effects instantly.
+  A friend pressing F7 on their own machine does nothing real (client-side state isn't
+  authoritative).
+- **Items need everyone.** Item definitions are looked up locally, so every player in the
+  session should run `install.ps1` — otherwise the whip/boombox items appear broken to
+  players without the mods, and they can't craft them.
+- **Boombox audio is per-machine.** Each player hears only their own placed boombox;
+  positions aren't synced between players.
+
 ## Notes & limitations
 
-- **Single player / host only.** Pal state lives on the server; on a dedicated server both
-  mods must be installed server-side.
+- Pal state lives on the server; on a dedicated server the mods must be installed
+  server-side.
 - Works on the pals near *you* — stand in (or near) your base when you crack the whip.
 - The wielded model is a borrowed vanilla melee weapon (see "Choosing the in-hand model"),
   not a bespoke whip mesh — that would require a custom asset pak.

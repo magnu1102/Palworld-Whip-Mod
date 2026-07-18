@@ -15,7 +15,7 @@ if (-not (Test-Path (Join-Path $music 'wellerman.wav'))) {
 
 $out = Join-Path $PSScriptRoot 'PalWhip.zip'
 if (Test-Path $out) { Remove-Item $out -Force }
-$parts = @('PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem', 'README.md') |
+$parts = @('PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem', 'install.ps1', 'README.md') |
     ForEach-Object { Join-Path $PSScriptRoot $_ }
 Compress-Archive -Path $parts -DestinationPath $out
 Write-Host "Created $out"
