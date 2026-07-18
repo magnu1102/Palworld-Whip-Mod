@@ -1,5 +1,14 @@
 # PalWhip 🔥🪢
 
+## ⬇️ Download
+
+### **[Download the latest PalWhip.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip.zip)**
+
+This is the recommended download for both new installations and updates. Close Palworld,
+extract the zip, then double-click **`Install PalWhip.bat`**. Existing settings and custom
+music are preserved. Do not use GitHub's automatically generated “Source code” archives;
+they do not contain the packaged music files.
+
 A Palworld mod with exactly one job: **craft a whip, crack it, and get your base pals back to normal.**
 
 Depressed? Ulcer? Sprained ankle? Fractured? Weakened? Slacking with zero SAN?
@@ -35,9 +44,10 @@ latter is pure-hotkey mode for players who skip PalSchema.)
 > at your own pals *hurts them* like any weapon would — the healing crack is the whip key,
 > not the swing.
 
-## Easy install (for friends)
+## Download and one-click install
 
-Close Palworld, extract the whole mod zip, then double-click **`Install PalWhip.bat`**.
+Download **[the latest PalWhip.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip.zip)**,
+close Palworld, extract the whole mod zip, then double-click **`Install PalWhip.bat`**.
 Accept the Windows administrator prompt and the installer handles everything else: it finds
 Steam and Palworld, downloads UE4SS and PalSchema from their official GitHub releases when
 needed, applies the required settings, and installs all four mod parts. It is safe to run
