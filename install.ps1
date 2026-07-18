@@ -101,7 +101,7 @@ if (-not $SkipGameCheck -and (Get-Process 'Palworld-Win64-Shipping' -ErrorAction
 }
 
 $w64 = Join-Path $GamePath 'Pal\Binaries\Win64'
-$tmp = Join-Path $env:TEMP 'palwhip_installer'
+$tmp = Join-Path $env:TEMP ("palwhip_installer_{0}" -f [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
 # --- 2. UE4SS --------------------------------------------------------------
@@ -159,13 +159,61 @@ if (Test-Path (Join-Path $palSchemaDir 'dlls\main.dll')) {
 
 # --- 4. The mods -----------------------------------------------------------
 Step 'PalWhip + PalBoombox mods'
+
+# Keep user-edited settings across upgrades. New options still receive their
+# defaults in Lua when they are absent from an older preserved config.
+$preservedConfigs = @(
+    @{
+        Installed = Join-Path $modsDir 'PalWhip\Scripts\config.lua'
+        Backup = Join-Path $tmp 'PalWhip-config.lua'
+    },
+    @{
+        Installed = Join-Path $modsDir 'PalBoombox\Scripts\config.lua'
+        Backup = Join-Path $tmp 'PalBoombox-config.lua'
+    }
+)
+foreach ($configFile in $preservedConfigs) {
+    if (Test-Path -LiteralPath $configFile.Installed) {
+        Copy-Item -LiteralPath $configFile.Installed -Destination $configFile.Backup -Force
+    }
+}
+
 Copy-Item (Join-Path $src 'PalWhip') $modsDir -Recurse -Force
-Copy-Item (Join-Path $src 'PalBoombox') $modsDir -Recurse -Force
+
+# Merge the boombox update without replacing any existing music file. This
+# preserves imported songs and user replacements that share a bundled name.
+$boomboxSource = Join-Path $src 'PalBoombox'
+$boomboxTarget = Join-Path $modsDir 'PalBoombox'
+New-Item -ItemType Directory -Force $boomboxTarget | Out-Null
+Get-ChildItem -LiteralPath $boomboxSource -Force |
+    Where-Object { $_.Name -ne 'music' } |
+    ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $boomboxTarget -Recurse -Force
+    }
+
+$sourceMusic = Join-Path $boomboxSource 'music'
+$targetMusic = Join-Path $boomboxTarget 'music'
+New-Item -ItemType Directory -Force $targetMusic | Out-Null
+Get-ChildItem -LiteralPath $sourceMusic -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $destination = Join-Path $targetMusic $_.Name
+        if (-not (Test-Path -LiteralPath $destination)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+        }
+    }
+
+foreach ($configFile in $preservedConfigs) {
+    if (Test-Path -LiteralPath $configFile.Backup) {
+        Copy-Item -LiteralPath $configFile.Backup -Destination $configFile.Installed -Force
+    }
+}
+
 $schemaMods = Join-Path $palSchemaDir 'mods'
 New-Item -ItemType Directory -Force $schemaMods | Out-Null
 Copy-Item (Join-Path $src 'PalWhipItem') $schemaMods -Recurse -Force
 Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
 Ok 'Mods installed'
+Ok 'Existing settings and custom music preserved'
 
 $music = Join-Path $modsDir 'PalBoombox\music'
 $trackCount = 0
@@ -183,6 +231,7 @@ Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host '=============================================' -ForegroundColor Green
 Write-Host ' Done! Launch Palworld and enjoy:' -ForegroundColor Green
+Write-Host '   Pal Tools: press F6 for the unified control panel'
 Write-Host '   Pal Whip: craft at Primitive Workbench, equip, press F7'
-Write-Host '   Boombox:  craft at Primitive Workbench, press F9 to place, F10 = next song'
+Write-Host '   Boombox:  F9 = place, F10 = next song, F11 = add music'
 Write-Host '=============================================' -ForegroundColor Green

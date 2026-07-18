@@ -355,6 +355,58 @@ local function crackWhip()
     end
 end
 
+-- The unified Pal Tools panel lives with PalBoombox. It writes commands to a
+-- shared IPC file so this mod can run the exact same crackWhip path as F7.
+local function startControlPanelCommands()
+    local candidates = {
+        "ue4ss/Mods/PalBoombox/ipc/menu_command.txt",
+        "Pal/Binaries/Win64/ue4ss/Mods/PalBoombox/ipc/menu_command.txt",
+        "Mods/PalBoombox/ipc/menu_command.txt",
+    }
+    local commandPath = nil
+    for _, path in ipairs(candidates) do
+        local folderProbe = io.open(path:gsub("menu_command%.txt$", "README.txt"), "r")
+        if folderProbe then
+            folderProbe:close()
+            commandPath = path
+            break
+        end
+    end
+    if not commandPath then
+        log("Pal Tools command channel not found; F7 remains available")
+        return
+    end
+
+    local keyPath = commandPath:gsub("menu_command%.txt$", "whip_key.txt")
+    local keyFile = io.open(keyPath, "w")
+    if keyFile then keyFile:write(WHIP_KEY); keyFile:close() end
+
+    local function readCommand()
+        local f = io.open(commandPath, "r")
+        if not f then return nil end
+        local message = {}
+        for line in f:lines() do
+            local k, v = line:match("^([%w_]+)=(.*)$")
+            if k then message[k] = v end
+        end
+        f:close()
+        return message
+    end
+
+    local initial = readCommand()
+    local lastSeq = initial and initial.seq or nil
+    LoopAsync(150, function()
+        local message = readCommand()
+        if message and message.seq and message.seq ~= lastSeq then
+            lastSeq = message.seq
+            if message.command == "whip" then
+                ExecuteInGameThread(crackWhip)
+            end
+        end
+        return false
+    end)
+end
+
 -- Register the whip key.
 local keyEnum = Key[WHIP_KEY]
 if keyEnum == nil then
@@ -372,6 +424,8 @@ if SOUND_DUMP_KEY ~= "" and Key[SOUND_DUMP_KEY] then
         ExecuteInGameThread(dumpSoundEvents)
     end)
 end
+
+startControlPanelCommands()
 
 log(string.format("Loaded. Press %s to crack the whip (range %.0f, owned-only: %s, item requirement: %s).",
     WHIP_KEY, RANGE, tostring(OWNED_ONLY), ITEM_REQUIREMENT))

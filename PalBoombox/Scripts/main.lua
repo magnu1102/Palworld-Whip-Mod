@@ -1,8 +1,8 @@
 -- PalBoombox - a placeable boombox with spatial audio sea shanties,
 -- multiplayer sync, and a visible in-world marker.
 --
--- Place (default F9): the boombox is set down where you stand, a replicated
--- treasure chest appears at the spot, and a tagged chat message tells every
+-- Place (default F9): the boombox is set down where you stand, a 1970s radio
+-- prop appears at the spot, and a tagged chat message tells every
 -- other player's mod to start the same track at the same position.
 -- Pick up (F9 again) removes it for everyone. F10 = next track.
 --
@@ -17,6 +17,9 @@ if not ok_cfg or type(config) ~= "table" then config = {} end
 
 local PLACE_KEY      = config.PlaceKey       or "F9"
 local NEXT_KEY       = config.NextTrackKey   or "F10"
+local ADD_MUSIC_KEY  = config.AddMusicKey    or "F11"
+local MENU_KEY       = config.MenuKey        or "F6"
+local SHOW_WELCOME   = (config.ShowWelcomeHint ~= false)
 local REQUIRE_ITEM   = (config.RequireItem   ~= false)
 local ITEM_ID        = config.ItemId         or "PalBoombox"
 local MASTER_VOLUME  = config.MasterVolume   or 0.8
@@ -28,7 +31,11 @@ local ANNOUNCE       = (config.Announce      ~= false)
 local SHARE          = (config.ShareWithOtherPlayers ~= false)
 local SPAWN_MARKER   = (config.SpawnMarker   ~= false)
 local MARKER_CLASS   = config.MarkerClass
-    or "/Game/Pal/Blueprint/MapObject/Object/TreasureBox/Visual/BP_TreasureBoxVisual_Grade01.BP_TreasureBoxVisual_Grade01_C"
+    or "/Script/Engine.StaticMeshActor"
+local MARKER_MESH    = config.MarkerMesh
+    or "/Game/Pal/Model/Prop/Furniture/Furnitures_Of_The_70s/SM_Radio_02.SM_Radio_02"
+local MARKER_SCALE   = config.MarkerScale or 1.0
+local MARKER_Z_OFFSET = config.MarkerZOffset or -90.0
 
 local TAG = "[BBX]"
 
@@ -47,9 +54,11 @@ local loopRunning = false
 local markerActor = nil
 local markerName = nil
 local markerReplicated = false
+local markerMesh = nil
 local basePath = nil
 local lastCompanionStart = 0
 local warnedNoCompanion = false
+local importPending = false
 
 local function log(msg)
     print(string.format("[PalBoombox] %s\n", tostring(msg)))
@@ -150,6 +159,18 @@ local function ensureCompanion()
     return false
 end
 
+local function readKeyValueFile(path)
+    local f = io.open(path, "r")
+    if not f then return nil end
+    local values = {}
+    for line in f:lines() do
+        local k, v = line:match("^([%w_]+)=(.*)$")
+        if k then values[k] = v end
+    end
+    f:close()
+    return values
+end
+
 local function hasTrack(name)
     for _, t in ipairs(tracks) do
         if t == name then return true end
@@ -223,6 +244,7 @@ end
 local function findMarkerByName()
     if not markerName then return nil end
     local className = MARKER_CLASS:match("%.([^%.]+)$")
+        or MARKER_CLASS:match("[./]([^./]+)$")
     if not className then return nil end
     local actors = tryGet(function() return FindAllOf(className) end) or {}
     for _, actor in ipairs(actors) do
@@ -248,8 +270,8 @@ end
 local function markerTransform(x, y, z)
     return {
         Rotation = { X = 0.0, Y = 0.0, Z = 0.0, W = 1.0 },
-        Translation = { X = x, Y = y, Z = z },
-        Scale3D = { X = 1.0, Y = 1.0, Z = 1.0 },
+        Translation = { X = x, Y = y, Z = z + MARKER_Z_OFFSET },
+        Scale3D = { X = MARKER_SCALE, Y = MARKER_SCALE, Z = MARKER_SCALE },
     }
 end
 
@@ -263,6 +285,35 @@ local function loadMarkerClass()
     return cls
 end
 
+local function loadMarkerMesh()
+    if not MARKER_MESH or MARKER_MESH == "" then return nil end
+    if markerMesh and markerMesh:IsValid() then return markerMesh end
+    markerMesh = StaticFindObject(MARKER_MESH)
+    if not markerMesh or not markerMesh:IsValid() then
+        markerMesh = tryGet(function() return LoadAsset(MARKER_MESH) end)
+    end
+    return markerMesh
+end
+
+local function applyMarkerMesh(actor)
+    if not actor or not actor:IsValid() then return false end
+    local mesh = loadMarkerMesh()
+    if not mesh or not mesh:IsValid() then
+        log("Marker mesh not found: " .. tostring(MARKER_MESH))
+        return false
+    end
+    local component = tryGet(function() return actor.StaticMeshComponent end)
+    if not component or not component:IsValid() then
+        log("Marker actor has no StaticMeshComponent")
+        return false
+    end
+    local ok = pcall(function() component:SetStaticMesh(mesh) end)
+    if not ok then
+        ok = pcall(function() component.StaticMesh = mesh end)
+    end
+    return ok
+end
+
 local function spawnLocalMarker(cls, transform)
     local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local pawn = getPawn()
@@ -270,6 +321,7 @@ local function spawnLocalMarker(cls, transform)
     if actor and actor:IsValid() then
         GS:FinishSpawningActor(actor, transform)
         markerActor = actor
+        applyMarkerMesh(actor)
         return true
     end
     return false
@@ -304,6 +356,7 @@ local function spawnMarker(x, y, z, allowReplication)
                 markerReplicated = true
                 ExecuteWithDelay(250, function()
                     markerActor = findMarkerByName() or markerActor
+                    if markerActor then applyMarkerMesh(markerActor) end
                 end)
                 return
             end
@@ -430,6 +483,23 @@ local function handleTelegram(sender, text)
             spawnMarker(tonumber(x), tonumber(y), tonumber(z), false)
         else
             destroyMarker()
+            markerName = "PalBoomboxMarker_" .. token
+            markerReplicated = true
+            local transform = markerTransform(tonumber(x), tonumber(y), tonumber(z))
+            ExecuteWithDelay(500, function()
+                markerActor = findMarkerByName()
+                if markerActor then
+                    applyMarkerMesh(markerActor)
+                else
+                    -- Replication can arrive after chat (or be unavailable on
+                    -- a particular game build). Every listening client has the
+                    -- mod, so guarantee the same visible prop locally.
+                    local cls = loadMarkerClass()
+                    markerName = nil
+                    markerReplicated = false
+                    if cls and cls:IsValid() then spawnLocalMarker(cls, transform) end
+                end
+            end)
         end
         if not hasTrack(track) then
             if pawn then
@@ -568,6 +638,144 @@ local function nextTrack()
     end
 end
 
+local function addMusic()
+    local pawn = getPawn()
+    if not pawn then
+        log("No player pawn found (not in game yet?)")
+        return
+    end
+    if importPending then
+        announce(pawn, "The music picker is already open.")
+        return
+    end
+
+    local base = resolveBasePath()
+    if not base then
+        announce(pawn, "Could not find the PalBoombox folder.")
+        return
+    end
+
+    local requestId = string.format("%s_%d", TOKEN, math.floor(os.clock() * 1000))
+    local resultPath = base .. "ipc/import_result.txt"
+    local script = (base .. "companion/import_music.ps1"):gsub("/", "\\")
+    os.remove(resultPath)
+    importPending = true
+    ensureCompanion()
+
+    os.execute(string.format(
+        'start "" powershell -STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%s" -RequestId "%s"',
+        script, requestId))
+    announce(pawn, "Music picker opened - select one or more MP3, WAV, or WMA files.")
+
+    local waitedMs = 0
+    LoopAsync(250, function()
+        waitedMs = waitedMs + 250
+        local result = readKeyValueFile(resultPath)
+        if result and result.request == requestId then
+            importPending = false
+            os.remove(resultPath)
+            ExecuteInGameThread(function()
+                if result.status == "imported" then
+                    -- The companion refreshes its advertised track list every
+                    -- two seconds, so wait for that heartbeat before reading it.
+                    ExecuteWithDelay(2250, function()
+                        readCompanion()
+                        ExecuteInGameThread(function()
+                            local currentPawn = getPawn()
+                            if currentPawn then
+                                announce(currentPawn, string.format(
+                                    "Added %d track(s) to the boombox. Press %s to choose one.",
+                                    tonumber(result.count) or 0, NEXT_KEY))
+                            end
+                        end)
+                    end)
+                elseif result.status == "cancelled" then
+                    announce(pawn, "Music import cancelled.")
+                else
+                    announce(pawn, "Could not import music: " .. (result.message or "unknown error"))
+                end
+            end)
+            return true
+        end
+        if waitedMs >= 300000 then
+            importPending = false
+            ExecuteInGameThread(function()
+                local currentPawn = getPawn()
+                if currentPawn then announce(currentPawn, "Music picker timed out.") end
+            end)
+            return true
+        end
+        return false
+    end)
+end
+
+local function cleanKeyArg(value)
+    return tostring(value):gsub('["\r\n]', "")
+end
+
+local function openControlPanel()
+    local base = resolveBasePath()
+    local pawn = getPawn()
+    if not base then
+        if pawn then announce(pawn, "Could not find the Pal Tools control panel.") end
+        return
+    end
+    local script = (base .. "companion/control_panel.ps1"):gsub("/", "\\")
+    os.execute(string.format(
+        'start "" powershell -STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%s" -WhipKey "%s" -PlaceKey "%s" -NextKey "%s" -AddMusicKey "%s"',
+        script, cleanKeyArg("F7"), cleanKeyArg(PLACE_KEY),
+        cleanKeyArg(NEXT_KEY), cleanKeyArg(ADD_MUSIC_KEY)))
+end
+
+local function startControlPanelCommands()
+    local base = resolveBasePath()
+    if not base then return end
+    local commandPath = base .. "ipc/menu_command.txt"
+    local initial = readKeyValueFile(commandPath)
+    local lastSeq = initial and initial.seq or nil
+
+    LoopAsync(150, function()
+        local message = readKeyValueFile(commandPath)
+        if message and message.seq and message.seq ~= lastSeq then
+            lastSeq = message.seq
+            ExecuteInGameThread(function()
+                if message.command == "boombox_toggle" then
+                    toggleBoombox()
+                elseif message.command == "boombox_next" then
+                    nextTrack()
+                elseif message.command == "music_add" then
+                    addMusic()
+                end
+            end)
+        end
+        return false
+    end)
+end
+
+local function scheduleWelcomeHint()
+    if not SHOW_WELCOME then return end
+    local base = resolveBasePath()
+    if not base then return end
+    local seenPath = base .. "ipc/welcome_seen.txt"
+    local seen = io.open(seenPath, "r")
+    if seen then seen:close(); return end
+
+    LoopAsync(1000, function()
+        local pawn = getPawn()
+        if not pawn then return false end
+        local f = io.open(seenPath, "w")
+        if f then f:write("1"); f:close() end
+        ExecuteInGameThread(function()
+            local currentPawn = getPawn()
+            if currentPawn then
+                announce(currentPawn, string.format(
+                    "Pal Tools ready! Press %s for Whip and Boombox controls.", MENU_KEY))
+            end
+        end)
+        return true
+    end)
+end
+
 -- ---------------------------------------------------------------------------
 -- Registration
 -- ---------------------------------------------------------------------------
@@ -585,8 +793,13 @@ end
 
 bind(PLACE_KEY, "F9", toggleBoombox)
 bind(NEXT_KEY, "F10", nextTrack)
+bind(ADD_MUSIC_KEY, "F11", addMusic)
+bind(MENU_KEY, "F6", openControlPanel)
+
+startControlPanelCommands()
+scheduleWelcomeHint()
 
 writeState({ playing = 0 })
 
-log(string.format("Loaded. %s places/picks up the boombox, %s switches tracks. Sync: %s, marker: %s.",
-    PLACE_KEY, NEXT_KEY, tostring(SHARE), tostring(SPAWN_MARKER)))
+log(string.format("Loaded. %s opens Pal Tools; %s places/picks up, %s switches tracks, %s adds music. Sync: %s, marker: %s.",
+    MENU_KEY, PLACE_KEY, NEXT_KEY, ADD_MUSIC_KEY, tostring(SHARE), tostring(SPAWN_MARKER)))

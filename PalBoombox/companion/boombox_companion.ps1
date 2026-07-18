@@ -17,6 +17,7 @@ $musicDir = Join-Path $root 'music'
 $ipcDir   = Join-Path $root 'ipc'
 $stateFile     = Join-Path $ipcDir 'state.txt'
 $companionFile = Join-Path $ipcDir 'companion.txt'
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 New-Item -ItemType Directory -Force $ipcDir | Out-Null
 
 # Single instance: a second copy exits quietly.
@@ -29,7 +30,9 @@ function Write-Heartbeat($pos) {
     $lines = @("alive=$(Get-Epoch)", "pos=$([math]::Round($pos,1))")
     Get-ChildItem $musicDir -File | Where-Object { $_.Extension -in '.wav', '.mp3', '.wma' } |
         Sort-Object Name | ForEach-Object { $lines += "track=$($_.Name)" }
-    Set-Content -Path $companionFile -Value ($lines -join "`n") -Encoding ascii
+    # UTF-8 without a BOM keeps custom filenames intact and remains easy for
+    # Lua's line-based reader to parse.
+    [IO.File]::WriteAllText($companionFile, ($lines -join "`n"), $utf8NoBom)
 }
 
 $player = New-Object System.Windows.Media.MediaPlayer
@@ -45,7 +48,9 @@ while ($true) {
 
     # Read state written by the Lua mod.
     $state = @{}
-    $raw = Get-Content $stateFile -ErrorAction SilentlyContinue
+    $raw = if (Test-Path $stateFile) {
+        [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) -split "`r?`n"
+    } else { @() }
     foreach ($line in $raw) {
         $kv = $line -split '=', 2
         if ($kv.Count -eq 2) { $state[$kv[0].Trim()] = $kv[1].Trim() }

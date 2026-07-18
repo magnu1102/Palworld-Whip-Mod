@@ -41,10 +41,16 @@ Close Palworld, extract the whole mod zip, then double-click **`Install PalWhip.
 Accept the Windows administrator prompt and the installer handles everything else: it finds
 Steam and Palworld, downloads UE4SS and PalSchema from their official GitHub releases when
 needed, applies the required settings, and installs all four mod parts. It is safe to run
-again when updating—the installer keeps your music and skips dependencies already present.
+again when updating—the installer preserves your configuration and every existing music
+file, while skipping dependencies already present. No uninstall is needed.
 
 For an unusual portable installation that Steam discovery cannot find, advanced users can
 run `install.ps1 -GamePath "D:\path\to\Palworld"` from PowerShell.
+
+**Updating an existing install:** close Palworld, extract the newer zip, and double-click
+`Install PalWhip.bat` again. Do not uninstall first. The updater replaces mod code and item
+definitions while retaining both config files and all existing music, including files whose
+names overlap a bundled track.
 
 ## Manual installation
 
@@ -130,14 +136,21 @@ would plug in later.
 
 Craft the **Boombox** at a Primitive Workbench (20× Wood + 10× Stone), then:
 
+- **F6** — open the unified **Pal Tools** panel. It has clickable controls for cracking
+  the whip, placing/picking up the boombox, changing tracks, and adding music. A one-time
+  in-game hint introduces this menu after installation.
 - **F9** — set the boombox down where you stand / pick it back up. The music stays at
   that spot: walk away and it fades with distance; turn your camera and it pans between
-  your left and right ear. A small treasure-chest marker appears where you placed it.
+  your left and right ear. Palworld's own 1970s radio prop appears on the ground where
+  you placed it.
 - **F10** — next track.
+- **F11** — open a Windows music picker over the game. Select one or more `.mp3`, `.wav`,
+  or `.wma` files and PalBoombox copies them into its music folder automatically.
 
-In hosted co-op, the host's marker is a replicated world actor, so everyone can see it.
-Players with PalBoombox installed also receive the position and track through tagged global
-chat events, seek to the host's current playback point, and hear the same spatial music.
+In hosted co-op, the host first creates a replicated world actor and each modded player
+applies the radio mesh when it arrives (with a local fallback). Players with PalBoombox
+installed receive the position, track, and start time through tagged global chat events,
+seek to the same playback point, and hear one shared source from that world position.
 Custom tracks are matched by filename and must exist in every listener's `music` folder.
 
 It ships with four hand-arranged 8-bit-style instrumental sea shanties, synthesized from
@@ -148,9 +161,10 @@ the traditional (public-domain) melodies by [tools/make_shanties.py](tools/make_
 - *Bully in the Alley*
 - *Drunken Sailor*
 
-**Add your own music:** drop any `.wav` / `.mp3` / `.wma` into `PalBoombox\music\` —
-your own recordings of the real shanties, or anything else. F10 cycles through whatever
-is in the folder (alphabetical).
+**Add your own music:** press F11 in-game and select as many `.mp3`, `.wav`, or `.wma`
+files as you want. The picker safely copies them into `PalBoombox\music\`; name collisions
+get a numbered suffix instead of overwriting an existing song. You can still copy files
+into that folder manually. F10 cycles through every available track alphabetically.
 
 ### How the spatial audio works
 
@@ -166,7 +180,8 @@ Palworld closes.
 
 Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
 keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
-item requirement, companion auto-start, multiplayer sharing, and the marker actor class.
+item requirement, companion auto-start, multiplayer sharing, marker mesh/scale/ground
+offset, and whether the one-time Pal Tools hint is shown.
 
 ## How it works
 
@@ -197,10 +212,15 @@ degrades gracefully (skips that fix and logs) instead of crashing the game.
   to players without the mods, and they can't craft them.
 - **Boombox audio is synchronized between modded players.** The host broadcasts the
   position, track, and start time; each player's local companion provides their spatial
-  audio. The replicated marker itself remains visible to players without PalBoombox.
+  audio. For a host and two friends, install the same current release on all three PCs.
+  Each player then hears the same placed source, with volume and stereo pan calculated
+  independently from that player's position and camera direction.
 - **Music files are still local.** Every listener needs the same filename in their own
   `PalBoombox\music` folder. Missing custom tracks are reported in chat instead of playing
   the wrong song.
+- **One shared boombox is active at a time.** This version is designed as a single communal
+  music source, not several independently playing radios. The sync path is implemented but
+  still needs a live three-client gameplay pass after each Palworld update.
 
 ## Notes & limitations
 

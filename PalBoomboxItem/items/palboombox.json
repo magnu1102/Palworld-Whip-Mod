@@ -2,8 +2,8 @@
     "PalBoombox": {
         "Type": "Generic",
         "Name": "Boombox",
-        "Description": "A sturdy shipboard speaker loaded with sea shanties. Set it down (default: F9) and it keeps singing where you left it - walk away and the music fades astern. Next song: F10.",
-        "IconTexture": "$resource/PalBoomboxItem/boombox",
+        "Description": "A portable radio for shared adventures. Open Pal Tools (F6) to place it, change tracks, or add music. Nearby players hear it from the same spot with spatial audio.",
+        "IconTexture": "$resource/PalBoomboxItem/boombox-v2",
         "TypeA": "Material",
         "TypeB": "MaterialProccessing",
         "Rank": 1,

@@ -10,3 +10,8 @@ PalBoombox/music/*.wav
 # Runtime IPC files
 PalBoombox/ipc/state.txt
 PalBoombox/ipc/companion.txt
+PalBoombox/ipc/import_result.txt
+PalBoombox/ipc/menu_command.txt
+PalBoombox/ipc/menu_show.txt
+PalBoombox/ipc/welcome_seen.txt
+PalBoombox/ipc/whip_key.txt

@@ -1,1 +1,1 @@
-Runtime IPC files (state.txt / companion.txt) are written here by the mod and its audio companion. Safe to delete when the game is closed.
+Runtime IPC files (state, companion, music import, and control-panel messages) are written here by the mod and its companion tools. Safe to delete when the game is closed.
