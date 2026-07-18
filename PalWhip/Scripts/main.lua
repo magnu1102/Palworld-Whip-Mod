@@ -32,6 +32,8 @@ local SOUND_EVENT   = config.SoundEventName or ""
 local SOUND_PATTERNS = config.SoundEventPatterns or { "whip", "attack_hit", "melee", "swing", "decide" }
 local SOUND_DUMP_KEY = config.SoundDumpKey or "F8"
 
+local DEBUG         = (config.Debug        == true)
+
 local lastCrack = 0.0
 local cachedSoundEvent = nil
 local warnedNoSound = false
@@ -320,6 +322,23 @@ local function crackWhip()
 
                     if ownedOk and rangeOk then
                         seen = seen + 1
+                        if DEBUG and seen <= 40 then
+                            local save2 = tryGet(function() return param.SaveParameter end)
+                            local cid   = tryGet(function() return save2.CharacterID:ToString() end) or "?"
+                            local san   = tryGet(function() return save2.SanityValue end)
+                            local sick  = tryGet(function() return save2.WorkerSick end)
+                            local hp    = tryGet(function() return save2.HP.Value end)
+                            local maxhp = tryGet(function() return param:GetMaxHP().Value end)
+                            local food  = tryGet(function() return save2.FullStomach end)
+                            local mfood = tryGet(function() return save2.MaxFullStomach end)
+                            local phys  = tryGet(function() return save2.PhysicalHealth end)
+                            log(string.format(
+                                "PAL %-24s san=%-8s sick=%-6s phys=%-6s hp=%s/%s food=%s/%s",
+                                cid, tostring(san), tostring(sick), tostring(phys),
+                                tostring(hp), tostring(maxhp),
+                                food and string.format("%.0f", food) or "nil",
+                                mfood and string.format("%.0f", mfood) or "nil"))
+                        end
                         if whipPal(param) then
                             cured = cured + 1
                         end

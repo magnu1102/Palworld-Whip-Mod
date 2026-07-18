@@ -183,7 +183,9 @@ end
 -- ---------------------------------------------------------------------------
 
 local function spatialTick()
-    if not placed or not boomboxPos then return true end -- true stops the loop
+    -- Snapshot the position: the place/pickup keybind can nil it mid-tick.
+    local pos = boomboxPos
+    if not placed or not pos then return true end -- true stops the loop
 
     local pawn, pc = getPawn()
     if not pawn then return false end
@@ -191,9 +193,9 @@ local function spatialTick()
     local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
     if not loc then return false end
 
-    local dx = boomboxPos.X - loc.X
-    local dy = boomboxPos.Y - loc.Y
-    local dz = boomboxPos.Z - loc.Z
+    local dx = pos.X - loc.X
+    local dy = pos.Y - loc.Y
+    local dz = pos.Z - loc.Z
     local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
     -- Inverse-square-ish falloff with a hard cutoff.
