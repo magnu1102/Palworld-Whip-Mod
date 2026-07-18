@@ -31,10 +31,11 @@ local config = {
     -- Whip item (requires the PalWhipItem PalSchema mod to be installed)
     ------------------------------------------------------------------
 
-    -- Require the crafted "Pal Whip" item in your inventory before the
-    -- whip key does anything. Set to false to go back to pure-hotkey mode
-    -- (e.g. if you don't use PalSchema).
-    RequireWhipItem = true,
+    -- What you need before the whip key works:
+    --   "equipped"  - the crafted Pal Whip must be in your hands
+    --   "inventory" - it just has to be somewhere in your inventory
+    --   "none"      - pure hotkey mode (e.g. if you skip PalSchema)
+    ItemRequirement = "equipped",
 
     -- Static item id of the whip. Must match the id in
     -- PalWhipItem/items/palwhip.json.

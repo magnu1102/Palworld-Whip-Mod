@@ -22,7 +22,9 @@ local HEAL_HP       = (config.HealHP       ~= false)
 local FILL_STOMACH  = (config.FillStomach  == true)
 local COOLDOWN      = config.Cooldown      or 1.0
 local ANNOUNCE      = (config.Announce     ~= false)
-local REQUIRE_ITEM  = (config.RequireWhipItem ~= false)
+-- "equipped": whip must be in your hands | "inventory": just carried | "none": no item needed
+local ITEM_REQUIREMENT = config.ItemRequirement or "equipped"
+if config.RequireWhipItem == false then ITEM_REQUIREMENT = "none" end
 local WHIP_ITEM_ID  = config.WhipItemId    or "PalWhip"
 local PLAY_SOUND    = (config.PlaySound    ~= false)
 local SOUND_ID      = config.SoundID       or ""
@@ -70,9 +72,21 @@ local function announce(context, text)
     log(text)
 end
 
--- Returns true if the player has the whip item (or if the item gate is off).
-local function hasWhipItem(pawn)
-    if not REQUIRE_ITEM then return true end
+-- Returns true/false, or nil if the equipped-weapon API is unavailable.
+local function isWhipEquipped(pawn)
+    local ok, result = pcall(function()
+        local shooter = pawn.ShooterComponent
+        if not shooter or not shooter:IsValid() then return nil end
+        local weapon = shooter:GetHasWeapon()
+        if not weapon or not weapon:IsValid() then return false end
+        return weapon.ownItemID.StaticId:ToString() == WHIP_ITEM_ID
+    end)
+    if ok then return result end
+    return nil
+end
+
+-- Returns true/false, or nil if the inventory API is unavailable.
+local function isWhipInInventory(pawn)
     local ok, count = pcall(function()
         local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
         local inv = PalUtility:GetLocalInventoryData(pawn)
@@ -81,12 +95,34 @@ local function hasWhipItem(pawn)
         end
         return nil
     end)
-    if ok and count ~= nil then
-        return count > 0
+    if ok and count ~= nil then return count > 0 end
+    return nil
+end
+
+-- Applies the ItemRequirement gate. Returns true (whip allowed) or
+-- false plus a message for the player.
+local function whipGatePassed(pawn)
+    if ITEM_REQUIREMENT == "none" then return true end
+
+    if ITEM_REQUIREMENT == "equipped" then
+        local equipped = isWhipEquipped(pawn)
+        if equipped == true then return true end
+        if equipped == false then
+            return false, "Equip your Pal Whip first, then crack it!"
+        end
+        -- API unavailable: degrade to the inventory check.
+        log("Equipped-weapon check unavailable, falling back to inventory check")
     end
-    -- Inventory API unavailable (renamed by a patch, or PalSchema item
-    -- missing): don't lock the player out of the whip entirely.
-    log("Could not check inventory for the whip item, allowing whip anyway")
+
+    local carried = isWhipInInventory(pawn)
+    if carried == false then
+        return false, "You need a Pal Whip in your inventory to crack the whip!"
+    end
+    if carried == nil then
+        -- Both checks unavailable (API renamed by a patch, or the
+        -- PalSchema item is missing): don't lock the player out.
+        log("Could not check for the whip item, allowing whip anyway")
+    end
     return true
 end
 
@@ -244,8 +280,9 @@ local function crackWhip()
         return
     end
 
-    if not hasWhipItem(pawn) then
-        announce(pawn, "You need a Pal Whip in your inventory to crack the whip!")
+    local gateOk, gateMsg = whipGatePassed(pawn)
+    if not gateOk then
+        announce(pawn, gateMsg)
         return
     end
 
@@ -317,5 +354,5 @@ if SOUND_DUMP_KEY ~= "" and Key[SOUND_DUMP_KEY] then
     end)
 end
 
-log(string.format("Loaded. Press %s to crack the whip (range %.0f, owned-only: %s, item required: %s).",
-    WHIP_KEY, RANGE, tostring(OWNED_ONLY), tostring(REQUIRE_ITEM)))
+log(string.format("Loaded. Press %s to crack the whip (range %.0f, owned-only: %s, item requirement: %s).",
+    WHIP_KEY, RANGE, tostring(OWNED_ONLY), ITEM_REQUIREMENT))
