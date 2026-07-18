@@ -1,8 +1,9 @@
 # PalWhip + PalBoombox one-shot installer.
 #
-# Run this from the extracted mod zip (right-click -> Run with PowerShell).
+# Double-click "Install PalWhip.bat" from the extracted mod zip. This script
+# can also be run directly for advanced/custom-path installs.
 # It will:
-#   1. Find your Steam Palworld install (or ask you for the folder)
+#   1. Find your Steam Palworld install automatically
 #   2. Download + install UE4SS (experimental-palworld build) if missing
 #   3. Download + install PalSchema if missing
 #   4. Apply the required UE4SS settings
@@ -19,6 +20,33 @@ param([string]$GamePath, [switch]$SkipGameCheck)
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Installing into Program Files normally requires elevation. Relaunch this
+# exact script as administrator and wait so the one-click launcher can report
+# the real exit code when installation finishes.
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    $elevatedArgs = @(
+        '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', ('"{0}"' -f $PSCommandPath)
+    )
+    if ($GamePath) {
+        $elevatedArgs += '-GamePath'
+        $elevatedArgs += ('"{0}"' -f $GamePath)
+    }
+    if ($SkipGameCheck) { $elevatedArgs += '-SkipGameCheck' }
+
+    try {
+        $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs `
+            -ArgumentList $elevatedArgs -Wait -PassThru
+        exit $elevated.ExitCode
+    } catch {
+        Write-Host 'ERROR: Administrator access is required to install the mod.' -ForegroundColor Red
+        exit 1
+    }
+}
+
 $UE4SS_URL = 'https://github.com/Okaetsu/RE-UE4SS/releases/download/experimental-palworld/UE4SS-Palworld.zip'
 $PALSCHEMA_API = 'https://api.github.com/repos/Okaetsu/PalSchema/releases/latest'
 $PALSCHEMA_FALLBACK_URL = 'https://github.com/Okaetsu/PalSchema/releases/download/0.6.0/PalSchema_0.6.0.zip'
@@ -26,7 +54,7 @@ $PALSCHEMA_FALLBACK_URL = 'https://github.com/Okaetsu/PalSchema/releases/downloa
 function Step($msg)  { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Ok($msg)    { Write-Host "    $msg" -ForegroundColor Green }
 function Skip($msg)  { Write-Host "    $msg (already installed, skipping)" -ForegroundColor DarkGray }
-function Fail($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red; Read-Host 'Press Enter to exit'; exit 1 }
+function Fail($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 # --- 0. Sanity: are the mod folders next to this script? -------------------
 $src = $PSScriptRoot
@@ -64,11 +92,7 @@ if (-not $GamePath) {
     }
 }
 if (-not $GamePath -or -not (Test-Path (Join-Path $GamePath 'Pal\Binaries\Win64'))) {
-    Write-Host 'Could not find Palworld automatically.'
-    $GamePath = Read-Host 'Paste your Palworld folder path (the one containing Pal and Palworld.exe)'
-    if (-not (Test-Path (Join-Path $GamePath 'Pal\Binaries\Win64'))) {
-        Fail "That doesn't look like a Palworld folder (no Pal\Binaries\Win64 inside)."
-    }
+    Fail 'Could not find the Steam Palworld installation automatically. Advanced users can run install.ps1 with -GamePath "D:\path\to\Palworld".'
 }
 Ok "Found: $GamePath"
 
@@ -162,4 +186,3 @@ Write-Host ' Done! Launch Palworld and enjoy:' -ForegroundColor Green
 Write-Host '   Pal Whip: craft at Primitive Workbench, equip, press F7'
 Write-Host '   Boombox:  craft at Primitive Workbench, press F9 to place, F10 = next song'
 Write-Host '=============================================' -ForegroundColor Green
-Read-Host 'Press Enter to close'

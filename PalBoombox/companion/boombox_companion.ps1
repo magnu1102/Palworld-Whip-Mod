@@ -6,7 +6,7 @@
 #
 # Protocol (key=value lines):
 #   state.txt  (mod -> companion): playing=0|1, track=<file>, volume=0..1,
-#              balance=-1..1, quit=1
+#              balance=-1..1, seek=<seconds>, seekseq=<id>, quit=1
 #   companion.txt (companion -> mod): alive=<unix time>, pos=<seconds>,
 #              track=<file> (one line per available track in ..\music)
 $ErrorActionPreference = 'SilentlyContinue'
@@ -36,6 +36,8 @@ $player = New-Object System.Windows.Media.MediaPlayer
 $currentTrack = ''
 $lastHeartbeat = 0
 $lastGameCheck = 0
+$appliedSeekSeq = ''
+$pendingSeek = -1
 Write-Heartbeat 0
 
 while ($true) {
@@ -60,6 +62,22 @@ while ($true) {
             $player.Open([Uri]$trackPath)
             $player.Play()
             $currentTrack = $track
+            $pendingSeek = -1  # re-arm seek for the new track
+        }
+
+        # Seek requests (multiplayer sync): applied once per seekseq, as soon
+        # as the media duration is known.
+        if ($state['seekseq'] -and $state['seekseq'] -ne $appliedSeekSeq) {
+            $appliedSeekSeq = $state['seekseq']
+            $s = 0.0
+            if ([double]::TryParse($state['seek'], [ref]$s)) { $pendingSeek = $s } else { $pendingSeek = -1 }
+        }
+        if ($pendingSeek -ge 0 -and $player.NaturalDuration.HasTimeSpan) {
+            $dur = $player.NaturalDuration.TimeSpan.TotalSeconds
+            if ($dur -gt 1) {
+                $player.Position = [TimeSpan]::FromSeconds($pendingSeek % $dur)
+            }
+            $pendingSeek = -1
         }
         $vol = 0.0; $bal = 0.0
         [void][double]::TryParse($state['volume'], [ref]$vol)

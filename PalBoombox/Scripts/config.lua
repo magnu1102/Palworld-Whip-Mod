@@ -32,6 +32,26 @@ local config = {
 
     -- Show in-game chat messages for place/pickup/track changes.
     Announce = true,
+
+    ------------------------------------------------------------------
+    -- Multiplayer
+    ------------------------------------------------------------------
+
+    -- Share your boombox with other players via tagged in-game chat
+    -- messages ("[BBX] ..."). Everyone who has this mod installed hears
+    -- the same track from the same spot and sees the marker. Music files
+    -- are matched by filename, so custom songs must exist in everyone's
+    -- music folder.
+    ShareWithOtherPlayers = true,
+
+    -- Spawn a small treasure chest at the boombox spot. When you are the
+    -- host this is a replicated actor, so even players without the boombox
+    -- mod can see it. A local marker is used if network spawning is unavailable.
+    SpawnMarker = true,
+
+    -- Blueprint class used for the marker. Any loaded actor class path
+    -- works; the default is a loot-free treasure chest visual.
+    -- MarkerClass = "/Game/Pal/Blueprint/MapObject/Object/TreasureBox/Visual/BP_TreasureBoxVisual_Grade01.BP_TreasureBoxVisual_Grade01_C",
 }
 
 return config

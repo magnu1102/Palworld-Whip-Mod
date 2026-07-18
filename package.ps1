@@ -1,4 +1,5 @@
-# Packages the PalWhip + PalBoombox mods into a zip ready for sharing / Nexus upload.
+# Packages the PalWhip + PalBoombox mods and one-click installer into a zip
+# ready for sharing / Nexus upload.
 # The zip contains:
 #   PalWhip/        -> extract into  Pal\Binaries\Win64\ue4ss\Mods\
 #   PalBoombox/     -> extract into  Pal\Binaries\Win64\ue4ss\Mods\
@@ -15,7 +16,10 @@ if (-not (Test-Path (Join-Path $music 'wellerman.wav'))) {
 
 $out = Join-Path $PSScriptRoot 'PalWhip.zip'
 if (Test-Path $out) { Remove-Item $out -Force }
-$parts = @('PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem', 'install.ps1', 'README.md') |
+$parts = @(
+    'PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem',
+    'Install PalWhip.bat', 'install.ps1', 'README.md'
+) |
     ForEach-Object { Join-Path $PSScriptRoot $_ }
 Compress-Archive -Path $parts -DestinationPath $out
 Write-Host "Created $out"

@@ -1,12 +1,14 @@
--- PalBoombox - a placeable boombox with spatial audio sea shanties.
+-- PalBoombox - a placeable boombox with spatial audio sea shanties,
+-- multiplayer sync, and a visible in-world marker.
 --
--- Press the place key to set the boombox down where you stand; it keeps
--- playing at that spot while you walk around. The mod tracks the player's
--- position and camera direction ~10x/second and streams volume + stereo
--- balance to a small audio companion process (PowerShell + WPF MediaPlayer)
--- over a file-based IPC channel, giving real distance falloff and panning.
+-- Place (default F9): the boombox is set down where you stand, a replicated
+-- treasure chest appears at the spot, and a tagged chat message tells every
+-- other player's mod to start the same track at the same position.
+-- Pick up (F9 again) removes it for everyone. F10 = next track.
 --
--- UE4SS Lua mod. Client-side audio; works in single player / host.
+-- Audio plays through a local companion process (see companion/) on each
+-- machine, so every player who wants to HEAR it needs this mod installed.
+-- Sync telegrams travel through the in-game chat as "[BBX] ..." messages.
 
 local UEHelpers = require("UEHelpers")
 
@@ -23,13 +25,29 @@ local MAX_DIST       = config.MaxDistance    or 8000.0
 local PAN_STRENGTH   = config.PanStrength    or 0.8
 local AUTO_START     = (config.AutoStartCompanion ~= false)
 local ANNOUNCE       = (config.Announce      ~= false)
+local SHARE          = (config.ShareWithOtherPlayers ~= false)
+local SPAWN_MARKER   = (config.SpawnMarker   ~= false)
+local MARKER_CLASS   = config.MarkerClass
+    or "/Game/Pal/Blueprint/MapObject/Object/TreasureBox/Visual/BP_TreasureBoxVisual_Grade01.BP_TreasureBoxVisual_Grade01_C"
 
-local placed = false
-local boomboxPos = nil          -- {X=, Y=, Z=}
-local tracks = {}
+local TAG = "[BBX]"
+
+-- Session token identifies the boombox owner and lets us ignore our own echo.
+math.randomseed(os.time() + math.floor(os.clock() * 1000))
+local TOKEN = string.format("%d_%05d", os.time(), math.random(0, 99999))
+
+-- Active boombox (one shared instance; last event wins)
+local active = nil   -- { x, y, z, track, epoch, own (bool) }
 local trackIndex = 1
+local tracks = {}
 local seq = 0
-local basePath = nil            -- resolved mod folder path relative to game cwd
+local seekSeq = 0
+local pendingSeek = 0
+local loopRunning = false
+local markerActor = nil
+local markerName = nil
+local markerReplicated = false
+local basePath = nil
 local lastCompanionStart = 0
 local warnedNoCompanion = false
 
@@ -57,11 +75,9 @@ local function announce(context, text)
 end
 
 -- ---------------------------------------------------------------------------
--- File IPC
+-- File IPC with the audio companion
 -- ---------------------------------------------------------------------------
 
--- The game's working directory varies (Win64 or the game root), so probe for
--- the mod folder once and remember which prefix works.
 local function resolveBasePath()
     if basePath then return basePath end
     local candidates = {
@@ -98,7 +114,6 @@ local function writeState(fields)
     end
 end
 
--- Reads the companion heartbeat; returns alive (bool) and refreshes `tracks`.
 local function readCompanion()
     local base = resolveBasePath()
     if not base then return false end
@@ -135,6 +150,13 @@ local function ensureCompanion()
     return false
 end
 
+local function hasTrack(name)
+    for _, t in ipairs(tracks) do
+        if t == name then return true end
+    end
+    return false
+end
+
 -- ---------------------------------------------------------------------------
 -- Game queries
 -- ---------------------------------------------------------------------------
@@ -162,7 +184,6 @@ local function hasBoomboxItem(pawn)
     return true
 end
 
--- Returns camera yaw in degrees (falls back to pawn yaw).
 local function getListenerYaw(pawn, pc)
     local yaw = tryGet(function()
         return pc.PlayerCameraManager:GetCameraRotation().Yaw
@@ -178,14 +199,141 @@ local function prettyTrackName(file)
     return (name:gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end))
 end
 
+local function encodeField(value)
+    return (tostring(value):gsub("([^%w%._%-])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+local function decodeField(value)
+    return (value:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end))
+end
+
 -- ---------------------------------------------------------------------------
--- Spatial update loop (runs while placed)
+-- In-world marker
+-- ---------------------------------------------------------------------------
+
+local function actorName(actor)
+    return tryGet(function() return actor:GetFName():ToString() end)
+        or tryGet(function() return actor:GetName() end)
+end
+
+local function findMarkerByName()
+    if not markerName then return nil end
+    local className = MARKER_CLASS:match("%.([^%.]+)$")
+    if not className then return nil end
+    local actors = tryGet(function() return FindAllOf(className) end) or {}
+    for _, actor in ipairs(actors) do
+        if actor and actor:IsValid() and actorName(actor) == markerName then
+            return actor
+        end
+    end
+    return nil
+end
+
+local function destroyMarker()
+    local actor = markerActor or findMarkerByName()
+    if actor then
+        pcall(function()
+            if actor:IsValid() then actor:K2_DestroyActor() end
+        end)
+    end
+    markerActor = nil
+    markerName = nil
+    markerReplicated = false
+end
+
+local function markerTransform(x, y, z)
+    return {
+        Rotation = { X = 0.0, Y = 0.0, Z = 0.0, W = 1.0 },
+        Translation = { X = x, Y = y, Z = z },
+        Scale3D = { X = 1.0, Y = 1.0, Z = 1.0 },
+    }
+end
+
+local function loadMarkerClass()
+    local cls = StaticFindObject(MARKER_CLASS)
+    if not cls or not cls:IsValid() then
+        local loaded = tryGet(function() return LoadAsset(MARKER_CLASS) end)
+        if loaded and loaded:IsValid() then cls = loaded end
+        if not cls or not cls:IsValid() then cls = StaticFindObject(MARKER_CLASS) end
+    end
+    return cls
+end
+
+local function spawnLocalMarker(cls, transform)
+    local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+    local pawn = getPawn()
+    local actor = GS:BeginDeferredActorSpawnFromClass(pawn, cls, transform, 1, pawn)
+    if actor and actor:IsValid() then
+        GS:FinishSpawningActor(actor, transform)
+        markerActor = actor
+        return true
+    end
+    return false
+end
+
+-- Returns R for a replicated marker, L for a local fallback, or N for none.
+local function spawnMarker(x, y, z, allowReplication)
+    if not SPAWN_MARKER then return "N" end
+    destroyMarker()
+    local ok, err = pcall(function()
+        local cls = loadMarkerClass()
+        if not cls or not cls:IsValid() then
+            error("marker class not found: " .. MARKER_CLASS)
+        end
+        local pawn = getPawn()
+        local transform = markerTransform(x, y, z)
+
+        -- SpawnActorBroadcast creates the actor on the authoritative host and
+        -- mirrors it to every client, including clients without PalBoombox.
+        local hasAuthority = tryGet(function() return pawn:HasAuthority() end)
+        if allowReplication and hasAuthority then
+            local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
+            markerName = "PalBoomboxMarker_" .. TOKEN
+            local spawnGuid = {}
+            local spawnDelegate = {}
+            local networkOk, spawned = pcall(function()
+                return PalUtility:SpawnActorBroadcast(
+                    pawn, cls, pawn, pawn, FName(markerName), transform,
+                    nil, spawnGuid, spawnDelegate)
+            end)
+            if networkOk and spawned then
+                markerReplicated = true
+                ExecuteWithDelay(250, function()
+                    markerActor = findMarkerByName() or markerActor
+                end)
+                return
+            end
+            if not networkOk then
+                log("Network marker spawn unavailable; using local fallback: " .. tostring(spawned))
+            end
+            markerName = nil
+        end
+
+        if not spawnLocalMarker(cls, transform) then
+            error("local actor spawn returned nothing")
+        end
+    end)
+    if not ok then
+        log("Could not spawn boombox marker: " .. tostring(err))
+        markerActor = nil
+        markerName = nil
+        markerReplicated = false
+        return "N"
+    end
+    return markerReplicated and "R" or "L"
+end
+
+-- ---------------------------------------------------------------------------
+-- Playback control (drives the local companion)
 -- ---------------------------------------------------------------------------
 
 local function spatialTick()
-    -- Snapshot the position: the place/pickup keybind can nil it mid-tick.
-    local pos = boomboxPos
-    if not placed or not pos then return true end -- true stops the loop
+    local a = active
+    if not a then return true end -- stops the loop
 
     local pawn, pc = getPawn()
     if not pawn then return false end
@@ -193,37 +341,147 @@ local function spatialTick()
     local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
     if not loc then return false end
 
-    local dx = pos.X - loc.X
-    local dy = pos.Y - loc.Y
-    local dz = pos.Z - loc.Z
+    local dx = a.x - loc.X
+    local dy = a.y - loc.Y
+    local dz = a.z - loc.Z
     local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
-    -- Inverse-square-ish falloff with a hard cutoff.
     local volume = 0.0
     if dist < MAX_DIST then
         volume = MASTER_VOLUME / (1.0 + (dist / REF_DIST) ^ 2)
-        volume = volume * (1.0 - dist / MAX_DIST) ^ 0.3 -- ease to zero at the edge
+        volume = volume * (1.0 - dist / MAX_DIST) ^ 0.3
     end
 
-    -- Pan: angle of the boombox relative to the camera's facing direction.
-    -- UE yaw and atan2(dy,dx) share the same convention (0 = +X, + toward +Y),
-    -- so balance = sin(relative angle): +1 fully right, -1 fully left.
     local balance = 0.0
     if dist > 50 then
         local yaw = getListenerYaw(pawn, pc)
         local rel = math.rad(math.deg(math.atan(dy, dx)) - yaw)
         balance = math.sin(rel) * PAN_STRENGTH
-        -- Slightly muffle sounds behind the listener.
         volume = volume * (0.85 + 0.15 * math.cos(rel))
     end
 
     writeState({
         playing = 1,
-        track = tracks[trackIndex] or "",
+        track = a.track,
         volume = string.format("%.3f", volume),
         balance = string.format("%.3f", balance),
+        seek = pendingSeek,
+        seekseq = seekSeq,
     })
     return false
+end
+
+local function startPlayback(entry)
+    active = entry
+    pendingSeek = math.max(0, os.time() - (entry.epoch or os.time()))
+    seekSeq = seekSeq + 1
+    ensureCompanion()
+    if not loopRunning then
+        loopRunning = true
+        LoopAsync(100, function()
+            local stop = spatialTick()
+            if stop then loopRunning = false end
+            return stop
+        end)
+    end
+end
+
+local function stopPlayback()
+    active = nil
+    writeState({ playing = 0 })
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat telegrams (multiplayer sync)
+-- ---------------------------------------------------------------------------
+
+local function sendTelegram(body)
+    if not SHARE then return end
+    local msg = string.format("%s %s %s", TAG, TOKEN, body)
+    local _, pc = getPawn()
+    if not pc then return end
+    local sent = pcall(function()
+        -- EPalChatCategory::Global = 1
+        pc.PlayerState:EnterChat(FText(msg), 1)
+    end)
+    if not sent then
+        log("Could not send sync telegram (chat API unavailable) - boombox stays local")
+    end
+end
+
+local function handleTelegram(sender, text)
+    local token, body = text:match("^%[BBX%]%s+([%w_]+)%s+(.*)$")
+    if not token then return end
+    if token == TOKEN then return end -- our own echo
+
+    local pawn = getPawn()
+
+    local x, y, z, encodedTrack, epoch, markerMode =
+        body:match("^P (%-?%d+) (%-?%d+) (%-?%d+) (%S+) (%d+) ([RLN])$")
+    if x then
+        local track = decodeField(encodedTrack)
+        log(string.format("Sync: %s placed a boombox (%s)", sender or "?", track))
+        readCompanion()
+        if active and active.own then
+            log("Ignoring remote boombox while our own is active")
+            return
+        end
+        if markerMode ~= "R" then
+            spawnMarker(tonumber(x), tonumber(y), tonumber(z), false)
+        else
+            destroyMarker()
+        end
+        if not hasTrack(track) then
+            if pawn then
+                announce(pawn, string.format(
+                    "%s is playing '%s' but you don't have that file in PalBoombox\\music!",
+                    sender or "Someone", prettyTrackName(track)))
+            end
+            return
+        end
+        startPlayback({
+            x = tonumber(x), y = tonumber(y), z = tonumber(z),
+            track = track, epoch = tonumber(epoch), own = false, token = token,
+        })
+        if pawn then
+            announce(pawn, string.format("%s cranks up the boombox: %s",
+                sender or "Someone", prettyTrackName(track)))
+        end
+        return
+    end
+
+    if body == "S" then
+        log(string.format("Sync: %s stopped the boombox", sender or "?"))
+        if active and not active.own and active.token == token then
+            destroyMarker()
+            stopPlayback()
+            if pawn then announce(pawn, "The boombox falls silent.") end
+        end
+        return
+    end
+end
+
+-- Fires on every machine: on the host when the server broadcasts, and on
+-- clients when the multicast arrives.
+local chatHookOk = pcall(function()
+    RegisterHook("/Script/Pal.PalGameStateInGame:BroadcastChatMessage", function(self, ChatMessage)
+        local ok, err = pcall(function()
+            local msg = ChatMessage:get()
+            local text = msg.Message:ToString()
+            if text:sub(1, #TAG) == TAG then
+                local sender = tryGet(function() return msg.Sender:ToString() end)
+                ExecuteInGameThread(function()
+                    handleTelegram(sender, text)
+                end)
+            end
+        end)
+        if not ok then log("Chat hook error: " .. tostring(err)) end
+    end)
+end)
+if chatHookOk then
+    log("Chat sync hook installed")
+else
+    log("WARNING: could not hook chat - multiplayer sync disabled on this machine")
 end
 
 -- ---------------------------------------------------------------------------
@@ -237,10 +495,10 @@ local function toggleBoombox()
         return
     end
 
-    if placed then
-        placed = false
-        boomboxPos = nil
-        writeState({ playing = 0 })
+    if active and active.own then
+        stopPlayback()
+        destroyMarker()
+        sendTelegram("S")
         announce(pawn, "Boombox picked up. The sea falls silent.")
         return
     end
@@ -251,9 +509,7 @@ local function toggleBoombox()
     end
 
     ensureCompanion()
-    if #tracks == 0 then
-        readCompanion()
-    end
+    if #tracks == 0 then readCompanion() end
     if #tracks == 0 then
         if not warnedNoCompanion then
             warnedNoCompanion = true
@@ -266,15 +522,21 @@ local function toggleBoombox()
 
     local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
     if not loc then return end
-    boomboxPos = { X = loc.X, Y = loc.Y, Z = loc.Z }
-    placed = true
 
-    announce(pawn, string.format("Boombox set down - now playing: %s",
-        prettyTrackName(tracks[trackIndex] or "?")))
+    if trackIndex > #tracks then trackIndex = 1 end
+    local track = tracks[trackIndex]
+    local epoch = os.time()
 
-    LoopAsync(100, function()
-        return spatialTick()
-    end)
+    startPlayback({
+        x = loc.X, y = loc.Y, z = loc.Z, track = track,
+        epoch = epoch, own = true, token = TOKEN,
+    })
+    local markerMode = spawnMarker(loc.X, loc.Y, loc.Z, true)
+    sendTelegram(string.format("P %d %d %d %s %d %s",
+        math.floor(loc.X), math.floor(loc.Y), math.floor(loc.Z),
+        encodeField(track), epoch, markerMode))
+
+    announce(pawn, string.format("Boombox set down - now playing: %s", prettyTrackName(track)))
 end
 
 local function nextTrack()
@@ -285,10 +547,19 @@ local function nextTrack()
     end
     trackIndex = (trackIndex % #tracks) + 1
     local pawn = getPawn()
-    if placed then
-        -- state is refreshed by the spatial loop; announce the change
+
+    if active and active.own then
+        -- Re-place in spirit: same spot, new track, fresh epoch, tell everyone.
+        active.track = tracks[trackIndex]
+        active.epoch = os.time()
+        pendingSeek = 0
+        seekSeq = seekSeq + 1
+        local markerMode = markerReplicated and "R" or (markerActor and "L" or "N")
+        sendTelegram(string.format("P %d %d %d %s %d %s",
+            math.floor(active.x), math.floor(active.y), math.floor(active.z),
+            encodeField(active.track), active.epoch, markerMode))
         if pawn then
-            announce(pawn, "Now playing: " .. prettyTrackName(tracks[trackIndex]))
+            announce(pawn, "Now playing: " .. prettyTrackName(active.track))
         end
     else
         if pawn then
@@ -315,8 +586,7 @@ end
 bind(PLACE_KEY, "F9", toggleBoombox)
 bind(NEXT_KEY, "F10", nextTrack)
 
--- Make sure any stale state from a previous session doesn't keep playing.
 writeState({ playing = 0 })
 
-log(string.format("Loaded. %s places/picks up the boombox, %s switches tracks.",
-    PLACE_KEY, NEXT_KEY))
+log(string.format("Loaded. %s places/picks up the boombox, %s switches tracks. Sync: %s, marker: %s.",
+    PLACE_KEY, NEXT_KEY, tostring(SHARE), tostring(SPAWN_MARKER)))
