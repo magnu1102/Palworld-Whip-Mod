@@ -1,0 +1,27 @@
+PALWHIP + FIELD BOOMBOX - MANUAL INSTALL
+=========================================
+
+This archive contains no installer executable. It requires UE4SS and PalSchema
+to already be installed. Anyone who previously used PalWhip-Setup.exe already
+has both dependencies.
+
+1. Close Palworld completely.
+2. In Steam, right-click Palworld, choose Manage, then Browse local files.
+3. Open PalWhip-Manual.zip.
+4. Drag the Pal folder from the ZIP into the Palworld folder Steam opened.
+5. Allow Windows to merge folders and replace the mod files.
+6. Launch Palworld.
+
+The archive intentionally omits PalWhip/Scripts/config.lua and
+PalBoombox/Scripts/config.lua. Existing settings therefore remain untouched;
+fresh installs use the safe defaults embedded in the Lua code.
+
+The archive also does not delete obsolete files from much older releases.
+Those files are no longer loaded and are harmless. They may be removed manually
+while the game is closed:
+
+  Pal\Binaries\Win64\ue4ss\Mods\PalBoombox\companion\control_panel.ps1
+  Pal\Binaries\Win64\ue4ss\Mods\PalBoombox\companion\import_music.ps1
+
+UE4SS:    https://github.com/Okaetsu/RE-UE4SS
+PalSchema: https://okaetsu.github.io/PalSchema/
