@@ -4,15 +4,22 @@
 
 ### [Download the one-click installer: PalWhip-Setup.exe](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Setup.exe)
 
+### [Download the PowerShell installer ZIP](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Installer.zip)
+
 ### [Download the no-EXE manual ZIP: PalWhip-Manual.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Manual.zip)
 
 ### [Download the standalone uninstaller ZIP](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Uninstaller.zip)
 
-That EXE is the only download needed for a new installation or an update. Close
+The EXE is one complete download for a new installation or an update. Close
 Palworld, run it, and approve the Windows administrator prompt. It discovers the
 Steam installation, installs or reuses UE4SS and PalSchema, and installs both
 mods. The installer is currently unsigned, so Windows may show an unknown
 publisher warning.
+
+The PowerShell installer ZIP performs the same complete installation without an
+EXE. Extract the entire ZIP, then double-click `Install-PalWhip.cmd`. The launcher
+runs the included `install.ps1` with an execution-policy bypass so Windows does
+not silently block the downloaded script. It also keeps the result visible.
 
 The manual ZIP is intended for users whose security settings block the unsigned
 installer. Close Palworld, then extract its `Pal` folder into the Palworld game

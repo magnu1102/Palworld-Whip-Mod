@@ -69,6 +69,7 @@ foreach ($track in $bundledTracks.Keys) {
 }
 
 $out = Join-Path $PSScriptRoot 'PalWhip-Setup.exe'
+$installerZipOut = Join-Path $PSScriptRoot 'PalWhip-Installer.zip'
 $manualOut = Join-Path $PSScriptRoot 'PalWhip-Manual.zip'
 $uninstallerOut = Join-Path $PSScriptRoot 'PalWhip-Uninstaller.zip'
 $oldZip = Join-Path $PSScriptRoot 'PalWhip.zip'
@@ -79,7 +80,8 @@ try {
     New-Item -ItemType Directory -Force $stage | Out-Null
     foreach ($part in @(
         'PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem',
-        'install.ps1', 'Uninstall-PalWhip.ps1', 'Uninstall-PalWhip.cmd', 'README.md'
+        'install.ps1', 'Install-PalWhip.cmd', 'INSTALL-README.txt',
+        'Uninstall-PalWhip.ps1', 'Uninstall-PalWhip.cmd', 'README.md'
     )) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $part) -Destination $stage -Recurse -Force
     }
@@ -101,6 +103,13 @@ try {
             Remove-Item -LiteralPath $runtimePath -Force
         }
     }
+
+    # Full script-based installer for users who cannot or do not want to run
+    # the unsigned setup EXE. It contains the same reviewed payload; install.ps1
+    # downloads only the shared UE4SS/PalSchema dependencies when necessary.
+    if (Test-Path -LiteralPath $installerZipOut) { Remove-Item -LiteralPath $installerZipOut -Force }
+    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $installerZipOut
+    Write-Host "Created $installerZipOut"
 
     $payloadZip = Join-Path $env:TEMP ("palwhip_payload_{0}.zip" -f [Guid]::NewGuid().ToString('N'))
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $payloadZip
