@@ -16,6 +16,9 @@ $bundledTracks = [ordered]@{
     'Maggie May (Sea Shanty) - Windrose.mp3' = 'FE92F861A7AD7D06AA788CFFCDBB225B47E07FF03DAB6D893C563F91B6BEEFEB'
     'Blow The Man Down (Sea Shanty) - Windrose.mp3' = 'D36AC94DFD2B13EDBA837261F756A8A8B878BD61936DD8C38588865246D70569'
     'Drunken Sailor (Sea Shanty) - Windrose.mp3' = 'A312EF92290EC100F8EA116238711E2BE530D249306FE52D685C71677F5D24DA'
+    '12 Years a Slave 2013   Roll Jordan Roll.mp3' = '118021523C44364D6E2E46D1F25B74EBEAE152D1769F68FCC5F7005C583308F3'
+    'Down to the River to Pray.mp3' = '358B7CE8A69987BBA7FCC5A41AE8EC3E5AFC87CD61981EFC21D36B378D5A1A81'
+    'gonna see miss liza....mp3' = 'E722C6E70949C35D24FB7806FB03E1C0929C72E61A4C06509B3FA0FA8B1B7426'
 }
 $manifestPath = Join-Path $PSScriptRoot 'PalBoombox\bundled_tracks.txt'
 $manifestTracks = @(
@@ -26,6 +29,25 @@ $manifestTracks = @(
 if ($manifestTracks.Count -ne $bundledTracks.Count -or
     @($manifestTracks | Where-Object { -not $bundledTracks.Contains($_) }).Count -ne 0) {
     throw 'bundled_tracks.txt does not exactly match the reviewed release recordings.'
+}
+$expectedPlaylistRows = @(
+    '108.147|Blow The Man Down (Sea Shanty) - Windrose.mp3'
+    '147.409|Bully In The Alley (Sea Shanty) - Windrose.mp3'
+    '80.248|Drunken Sailor (Sea Shanty) - Windrose.mp3'
+    '126.407|Leave Her Johnny (Sea Shanty) - Windrose.mp3'
+    '163.187|Maggie May (Sea Shanty) - Windrose.mp3'
+    '87.928|Sail the Raging Sea (Sea Shanty) - Windrose.mp3'
+    '118.152|12 Years a Slave 2013   Roll Jordan Roll.mp3'
+    '177.215|Down to the River to Pray.mp3'
+    '56.111|gonna see miss liza....mp3'
+)
+$actualPlaylistRows = @(
+    Get-Content -LiteralPath (Join-Path $PSScriptRoot 'PalBoombox\shared_playlist.txt') -Encoding UTF8 |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -and -not $_.StartsWith('#') }
+)
+if (($actualPlaylistRows -join "`n") -cne ($expectedPlaylistRows -join "`n")) {
+    throw 'shared_playlist.txt does not exactly match the reviewed release track timing.'
 }
 $unexpectedTracks = Get-ChildItem -LiteralPath $music -Recurse -File |
     Where-Object {
@@ -58,11 +80,17 @@ try {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $part) -Destination $stage -Recurse -Force
     }
 
+    # Retain the historical source asset for development history, but do not
+    # ship or register it. boombox-v2.png is the only referenced release icon.
+    $stagedLegacyIcon = Join-Path $stage 'PalBoomboxItem\resources\images\boombox.png'
+    if (Test-Path -LiteralPath $stagedLegacyIcon) {
+        Remove-Item -LiteralPath $stagedLegacyIcon -Force
+    }
+
     # Runtime state is local to one machine/session and must never ship.
     $stagedIpc = Join-Path $stage 'PalBoombox\ipc'
     foreach ($runtimeFile in @(
-        'state.txt', 'companion.txt', 'import_result.txt', 'menu_command.txt',
-        'menu_show.txt', 'welcome_seen.txt', 'whip_key.txt', 'volume.txt'
+        'state.txt', 'companion.txt', 'volume.txt'
     )) {
         $runtimePath = Join-Path $stagedIpc $runtimeFile
         if (Test-Path -LiteralPath $runtimePath) {

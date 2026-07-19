@@ -31,6 +31,10 @@ local config = {
     -- each crack (for troubleshooting).
     Debug = false,
 
+    -- Print mod lifecycle and fallback diagnostics to the UE4SS console.
+    -- Disabled by default so normal play produces no routine log noise.
+    DebugLogging = false,
+
     ------------------------------------------------------------------
     -- Whip item (requires the PalWhipItem PalSchema mod to be installed)
     ------------------------------------------------------------------

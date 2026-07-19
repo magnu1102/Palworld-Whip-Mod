@@ -7,7 +7,7 @@ package-lock.json
 __pycache__/
 *.pyc
 
-# Personal audio stays local by default. Only the six explicitly selected
+# Personal audio stays local by default. Only the explicitly selected
 # preinstalled release tracks are allowlisted.
 PalBoombox/music/*
 !PalBoombox/music/Sail the Raging Sea (Sea Shanty) - Windrose.mp3
@@ -16,6 +16,9 @@ PalBoombox/music/*
 !PalBoombox/music/Maggie May (Sea Shanty) - Windrose.mp3
 !PalBoombox/music/Blow The Man Down (Sea Shanty) - Windrose.mp3
 !PalBoombox/music/Drunken Sailor (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/12 Years a Slave 2013   Roll Jordan Roll.mp3
+!PalBoombox/music/Down to the River to Pray.mp3
+!PalBoombox/music/gonna see miss liza....mp3
 
 # Runtime IPC files
 PalBoombox/ipc/state.txt

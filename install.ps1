@@ -177,6 +177,19 @@ $boomboxSource = Join-Path $src 'PalBoombox'
 $boomboxTarget = Join-Path $modsDir 'PalBoombox'
 $targetMusic = Join-Path $boomboxTarget 'music'
 
+# v0.2.x used a separate WPF control panel, file picker, and command files.
+# The native-building release has no visible companion UI. Remove only these
+# known obsolete mod-owned files so an upgrade cannot leave the old window or
+# command poller behind.
+$obsoleteBoomboxFiles = @(
+    'companion\control_panel.ps1',
+    'companion\import_music.ps1',
+    'ipc\import_result.txt',
+    'ipc\menu_command.txt',
+    'ipc\menu_show.txt',
+    'ipc\welcome_seen.txt',
+    'ipc\whip_key.txt'
+)
 # Previous releases shipped four generated WAV arrangements and two recordings
 # that have now been replaced. Remove only byte-for-byte copies of those known
 # release files. A user replacement with the same name but different content
@@ -289,6 +302,16 @@ $schemaMods = Join-Path $palSchemaDir 'mods'
 New-Item -ItemType Directory -Force $schemaMods | Out-Null
 Copy-Item (Join-Path $src 'PalWhipItem') $schemaMods -Recurse -Force
 Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
+$legacyBoomboxIcon = Join-Path $schemaMods 'PalBoomboxItem\resources\images\boombox.png'
+if (Test-Path -LiteralPath $legacyBoomboxIcon) {
+    Remove-Item -LiteralPath $legacyBoomboxIcon -Force
+}
+foreach ($relativeFile in $obsoleteBoomboxFiles) {
+    $obsoletePath = Join-Path $boomboxTarget $relativeFile
+    if (Test-Path -LiteralPath $obsoletePath) {
+        Remove-Item -LiteralPath $obsoletePath -Force
+    }
+}
 $installSucceeded = $true
 } finally {
     if (-not $installSucceeded) {
@@ -326,7 +349,7 @@ Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host '=============================================' -ForegroundColor Green
 Write-Host ' Done! Launch Palworld and enjoy:' -ForegroundColor Green
-Write-Host '   Pal Tools: press F6 for the unified control panel'
 Write-Host '   Pal Whip: craft at Primitive Workbench, equip, press F7'
-Write-Host '   Boombox:  F9 = place, F10 = next song, F11 = add music'
+Write-Host '   Boombox: craft it, then place Field Boombox from the build menu'
+Write-Host '   Volume:   F5 = down, F6 = up (local listening volume)'
 Write-Host '=============================================' -ForegroundColor Green
