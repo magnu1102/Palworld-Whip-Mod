@@ -168,7 +168,7 @@ try {
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockBoombox 'ipc\menu_command.txt'))) 'Upgrade retained obsolete panel IPC.'
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem\resources\images\boombox.png'))) 'Upgrade retained the obsolete boombox icon.'
 
-    Write-Host 'Building and inspecting the self-extracting installer...'
+    Write-Host 'Building and inspecting both release artifacts...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'package.ps1')
     Assert ($LASTEXITCODE -eq 0) 'Installer build failed.'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -220,6 +220,27 @@ try {
         Assert (-not ($entryNames -contains 'tools/test_release.ps1')) 'Package unexpectedly contains development tools.'
     } finally {
         $archive.Dispose()
+    }
+
+    $manualPath = Join-Path $repo 'PalWhip-Manual.zip'
+    Assert (Test-Path -LiteralPath $manualPath) 'PalWhip-Manual.zip was not created.'
+    $manualArchive = [IO.Compression.ZipFile]::OpenRead($manualPath)
+    try {
+        $manualEntries = @($manualArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+        Assert ($manualEntries -contains 'MANUAL-INSTALL.txt') 'Manual archive is missing its instructions.'
+        Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalWhip/Scripts/main.lua') 'Manual archive is missing PalWhip.'
+        Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalBoombox/Scripts/main.lua') 'Manual archive is missing PalBoombox.'
+        Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalSchema/mods/PalWhipItem/items/palwhip.json') 'Manual archive is missing PalWhipItem.'
+        Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalSchema/mods/PalBoomboxItem/buildings/palboombox.json') 'Manual archive is missing the Field Boombox building.'
+        Assert (-not ($manualEntries | Where-Object { $_ -match '\.(exe|bat)$' -or $_ -match '(^|/)install\.ps1$' })) 'Manual archive contains an executable or installer script.'
+        Assert (-not ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalWhip/Scripts/config.lua')) 'Manual archive would overwrite PalWhip settings.'
+        Assert (-not ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalBoombox/Scripts/config.lua')) 'Manual archive would overwrite PalBoombox settings.'
+        $manualRuntime = @($manualEntries | Where-Object { $_ -match '/PalBoombox/ipc/(state|companion|volume)\.txt$' })
+        Assert ($manualRuntime.Count -eq 0) 'Manual archive contains runtime IPC files.'
+        $manualMusic = @($manualEntries | Where-Object { $_ -match '/PalBoombox/music/.+\.mp3$' })
+        Assert ($manualMusic.Count -eq 9) 'Manual archive must contain exactly nine bundled tracks.'
+    } finally {
+        $manualArchive.Dispose()
     }
 
     Write-Host 'All release regression checks passed.' -ForegroundColor Green

@@ -69,8 +69,10 @@ foreach ($track in $bundledTracks.Keys) {
 }
 
 $out = Join-Path $PSScriptRoot 'PalWhip-Setup.exe'
+$manualOut = Join-Path $PSScriptRoot 'PalWhip-Manual.zip'
 $oldZip = Join-Path $PSScriptRoot 'PalWhip.zip'
 $stage = Join-Path $env:TEMP ("palwhip_package_{0}" -f [Guid]::NewGuid().ToString('N'))
+$manualStage = Join-Path $env:TEMP ("palwhip_manual_{0}" -f [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force $stage | Out-Null
     foreach ($part in @(
@@ -126,11 +128,48 @@ try {
     }
     if (Test-Path -LiteralPath $oldZip) { Remove-Item -LiteralPath $oldZip -Force }
     Write-Host "Created $out"
+
+    # Build a ready-to-extract archive for users whose security policy blocks
+    # unsigned self-extracting executables. The two config files are omitted so
+    # a manual update cannot overwrite personal settings; Lua has safe defaults
+    # for a fresh install.
+    $manualMods = Join-Path $manualStage 'Pal\Binaries\Win64\ue4ss\Mods'
+    $manualSchemaMods = Join-Path $manualMods 'PalSchema\mods'
+    New-Item -ItemType Directory -Force $manualMods, $manualSchemaMods | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalWhip') -Destination $manualMods -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalBoombox') -Destination $manualMods -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalWhipItem') -Destination $manualSchemaMods -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalBoomboxItem') -Destination $manualSchemaMods -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'MANUAL-INSTALL.txt') -Destination $manualStage -Force
+
+    foreach ($manualOnlyFile in @(
+        (Join-Path $manualMods 'PalWhip\Scripts\config.lua'),
+        (Join-Path $manualMods 'PalBoombox\Scripts\config.lua'),
+        (Join-Path $manualSchemaMods 'PalBoomboxItem\resources\images\boombox.png')
+    )) {
+        if (Test-Path -LiteralPath $manualOnlyFile) {
+            Remove-Item -LiteralPath $manualOnlyFile -Force
+        }
+    }
+    $manualIpc = Join-Path $manualMods 'PalBoombox\ipc'
+    foreach ($runtimeFile in 'state.txt', 'companion.txt', 'volume.txt') {
+        $runtimePath = Join-Path $manualIpc $runtimeFile
+        if (Test-Path -LiteralPath $runtimePath) {
+            Remove-Item -LiteralPath $runtimePath -Force
+        }
+    }
+
+    if (Test-Path -LiteralPath $manualOut) { Remove-Item -LiteralPath $manualOut -Force }
+    Compress-Archive -Path (Join-Path $manualStage '*') -DestinationPath $manualOut
+    Write-Host "Created $manualOut"
 } finally {
     if ($payloadZip -and (Test-Path -LiteralPath $payloadZip)) {
         Remove-Item -LiteralPath $payloadZip -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path -LiteralPath $stage) {
         Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $manualStage) {
+        Remove-Item -LiteralPath $manualStage -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

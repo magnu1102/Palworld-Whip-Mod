@@ -1,6 +1,7 @@
 # Build artifacts
 PalWhip.zip
 PalWhip-Setup.exe
+PalWhip-Manual.zip
 node_modules/
 package.json
 package-lock.json

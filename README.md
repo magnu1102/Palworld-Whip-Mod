@@ -4,11 +4,19 @@
 
 ### [Download the one-click installer: PalWhip-Setup.exe](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Setup.exe)
 
+### [Download the no-EXE manual ZIP: PalWhip-Manual.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Manual.zip)
+
 That EXE is the only download needed for a new installation or an update. Close
 Palworld, run it, and approve the Windows administrator prompt. It discovers the
 Steam installation, installs or reuses UE4SS and PalSchema, and installs both
 mods. The installer is currently unsigned, so Windows may show an unknown
 publisher warning.
+
+The manual ZIP is intended for users whose security settings block the unsigned
+installer. Close Palworld, then extract its `Pal` folder into the Palworld game
+folder. It contains no executable or installer script and preserves existing
+configuration files. UE4SS and PalSchema must already be installed; anyone who
+previously ran the one-click installer already has them.
 
 Updates are in-place: do not uninstall first. User-edited configuration and the
 entire installed `PalBoombox\music` folder are verified and preserved. Obsolete
