@@ -80,7 +80,7 @@ if (-not $isAdministrator -and -not $TestNoElevation) {
 }
 
 $runningGame = Get-Process -Name 'Palworld', 'Palworld-Win64-Shipping' -ErrorAction SilentlyContinue
-if ($runningGame) {
+if ($runningGame -and -not $TestNoElevation) {
     Fail 'Palworld is running. Close the game completely before uninstalling.'
 }
 

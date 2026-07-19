@@ -70,14 +70,16 @@ foreach ($track in $bundledTracks.Keys) {
 
 $out = Join-Path $PSScriptRoot 'PalWhip-Setup.exe'
 $manualOut = Join-Path $PSScriptRoot 'PalWhip-Manual.zip'
+$uninstallerOut = Join-Path $PSScriptRoot 'PalWhip-Uninstaller.zip'
 $oldZip = Join-Path $PSScriptRoot 'PalWhip.zip'
 $stage = Join-Path $env:TEMP ("palwhip_package_{0}" -f [Guid]::NewGuid().ToString('N'))
 $manualStage = Join-Path $env:TEMP ("palwhip_manual_{0}" -f [Guid]::NewGuid().ToString('N'))
+$uninstallerStage = Join-Path $env:TEMP ("palwhip_uninstaller_{0}" -f [Guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force $stage | Out-Null
     foreach ($part in @(
         'PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem',
-        'install.ps1', 'Uninstall-PalWhip.ps1', 'README.md'
+        'install.ps1', 'Uninstall-PalWhip.ps1', 'Uninstall-PalWhip.cmd', 'README.md'
     )) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $part) -Destination $stage -Recurse -Force
     }
@@ -142,6 +144,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalBoomboxItem') -Destination $manualSchemaMods -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'MANUAL-INSTALL.txt') -Destination $manualStage -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-PalWhip.ps1') -Destination $manualStage -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-PalWhip.cmd') -Destination $manualStage -Force
 
     foreach ($manualOnlyFile in @(
         (Join-Path $manualMods 'PalWhip\Scripts\config.lua'),
@@ -163,6 +166,14 @@ try {
     if (Test-Path -LiteralPath $manualOut) { Remove-Item -LiteralPath $manualOut -Force }
     Compress-Archive -Path (Join-Path $manualStage '*') -DestinationPath $manualOut
     Write-Host "Created $manualOut"
+
+    New-Item -ItemType Directory -Force $uninstallerStage | Out-Null
+    foreach ($uninstallerFile in 'Uninstall-PalWhip.ps1', 'Uninstall-PalWhip.cmd', 'UNINSTALL-README.txt') {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $uninstallerFile) -Destination $uninstallerStage -Force
+    }
+    if (Test-Path -LiteralPath $uninstallerOut) { Remove-Item -LiteralPath $uninstallerOut -Force }
+    Compress-Archive -Path (Join-Path $uninstallerStage '*') -DestinationPath $uninstallerOut
+    Write-Host "Created $uninstallerOut"
 } finally {
     if ($payloadZip -and (Test-Path -LiteralPath $payloadZip)) {
         Remove-Item -LiteralPath $payloadZip -Force -ErrorAction SilentlyContinue
@@ -172,5 +183,8 @@ try {
     }
     if (Test-Path -LiteralPath $manualStage) {
         Remove-Item -LiteralPath $manualStage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $uninstallerStage) {
+        Remove-Item -LiteralPath $uninstallerStage -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
