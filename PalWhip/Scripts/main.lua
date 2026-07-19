@@ -14,13 +14,13 @@ end
 
 -- Defaults in case config.lua is missing or partially edited.
 local WHIP_KEY      = config.WhipKey       or "F7"
-local RANGE         = config.Range         or 9000.0
+local RANGE         = math.max(0.0, tonumber(config.Range) or 9000.0)
 local OWNED_ONLY    = (config.OwnedOnly    ~= false)
 local CURE_SICKNESS = (config.CureSickness ~= false)
 local RESTORE_SAN   = (config.RestoreSanity ~= false)
 local HEAL_HP       = (config.HealHP       ~= false)
 local FILL_STOMACH  = (config.FillStomach  == true)
-local COOLDOWN      = config.Cooldown      or 1.0
+local COOLDOWN      = math.max(0.0, tonumber(config.Cooldown) or 1.0)
 local ANNOUNCE      = (config.Announce     ~= false)
 -- "equipped": whip must be in your hands | "inventory": just carried | "none": no item needed
 local ITEM_REQUIREMENT = config.ItemRequirement or "equipped"
@@ -30,14 +30,22 @@ local PLAY_SOUND    = (config.PlaySound    ~= false)
 local SOUND_ID      = config.SoundID       or ""
 local SOUND_EVENT   = config.SoundEventName or ""
 local SOUND_PATTERNS = config.SoundEventPatterns or { "whip", "attack_hit", "melee", "swing", "decide" }
+if type(SOUND_PATTERNS) ~= "table" then
+    SOUND_PATTERNS = { "whip", "attack_hit", "melee", "swing", "decide" }
+end
 local SOUND_DUMP_KEY = config.SoundDumpKey or "F8"
+
+local DEBUG         = (config.Debug        == true)
+local DEBUG_LOGGING = (config.DebugLogging == true)
 
 local lastCrack = 0.0
 local cachedSoundEvent = nil
 local warnedNoSound = false
 
 local function log(msg)
-    print(string.format("[PalWhip] %s\n", tostring(msg)))
+    if DEBUG_LOGGING then
+        print(string.format("[PalWhip] %s\n", tostring(msg)))
+    end
 end
 
 -- Safe field read: returns nil instead of erroring when a property is missing.
@@ -69,7 +77,6 @@ local function announce(context, text)
             end
         end
     end)
-    log(text)
 end
 
 -- Returns true/false, or nil if the equipped-weapon API is unavailable.
@@ -291,7 +298,7 @@ local function crackWhip()
     local ploc = tryGet(function() return pawn:K2_GetActorLocation() end)
     local rangeSq = RANGE > 0 and (RANGE * RANGE) or nil
 
-    local pals = FindAllOf("PalCharacter") or {}
+    local pals = tryGet(function() return FindAllOf("PalCharacter") end) or {}
     local cured, seen = 0, 0
 
     for _, pal in ipairs(pals) do
@@ -320,6 +327,23 @@ local function crackWhip()
 
                     if ownedOk and rangeOk then
                         seen = seen + 1
+                        if DEBUG and seen <= 40 then
+                            local save2 = tryGet(function() return param.SaveParameter end)
+                            local cid   = tryGet(function() return save2.CharacterID:ToString() end) or "?"
+                            local san   = tryGet(function() return save2.SanityValue end)
+                            local sick  = tryGet(function() return save2.WorkerSick end)
+                            local hp    = tryGet(function() return save2.HP.Value end)
+                            local maxhp = tryGet(function() return param:GetMaxHP().Value end)
+                            local food  = tryGet(function() return save2.FullStomach end)
+                            local mfood = tryGet(function() return save2.MaxFullStomach end)
+                            local phys  = tryGet(function() return save2.PhysicalHealth end)
+                            log(string.format(
+                                "PAL %-24s san=%-8s sick=%-6s phys=%-6s hp=%s/%s food=%s/%s",
+                                cid, tostring(san), tostring(sick), tostring(phys),
+                                tostring(hp), tostring(maxhp),
+                                food and string.format("%.0f", food) or "nil",
+                                mfood and string.format("%.0f", mfood) or "nil"))
+                        end
                         if whipPal(param) then
                             cured = cured + 1
                         end

@@ -1,228 +1,184 @@
-# PalWhip 🔥🪢
+# PalWhip + Field Boombox
 
-A Palworld mod with exactly one job: **craft a whip, crack it, and get your base pals back to normal.**
+## Download
 
-Depressed? Ulcer? Sprained ankle? Fractured? Weakened? Slacking with zero SAN?
-Craft the **Pal Whip**, press the whip key (default **F7**) near your base, and every one of
-*your* pals around you is instantly — with a satisfying crack sound:
+### [Download the one-click installer: PalWhip-Setup.exe](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Setup.exe)
 
-- **Cured of sickness** — Depression, Ulcer, Sprain, Fracture, Weakness, Cold, etc.
-- **Restored to full sanity (SAN 100)** — no more moping around the base
-- **Healed to full HP** (optional, on by default)
-- **Fed to a full stomach** (optional, off by default)
+That EXE is the only download needed for a new installation or an update. Close
+Palworld, run it, and approve the Windows administrator prompt. It discovers the
+Steam installation, installs or reuses UE4SS and PalSchema, and installs both
+mods. The installer is currently unsigned, so Windows may show an unknown
+publisher warning.
 
-No game files are modified; uninstall by deleting two folders.
+Updates are in-place: do not uninstall first. User-edited configuration and the
+entire installed `PalBoombox\music` folder are verified and preserved. Obsolete
+mod-owned UI/runtime files from older releases are removed automatically.
 
-Also on board: **PalBoombox** — a craftable boombox that plays sea shanties with real
-spatial audio (see [The Boombox](#the-boombox-)).
+## What is included
 
-## The mod parts
+| Part | Purpose |
+|---|---|
+| `PalWhip` | UE4SS Lua logic for curing and restoring base pals |
+| `PalWhipItem` | PalSchema weapon, recipe, and icon |
+| `PalBoombox` | Silent-in-the-background spatial audio and world-object discovery |
+| `PalBoomboxItem` | PalSchema item, native building registration, and icon |
 
-| Folder | Framework | What it does |
-|---|---|---|
-| `PalWhip/` | UE4SS (Lua) | The whip crack: keybind, curing logic, sound, inventory check |
-| `PalWhipItem/` | [PalSchema](https://okaetsu.github.io/PalSchema/) (JSON) | The craftable **Pal Whip** item: icon, name, crafting recipe |
-| `PalBoombox/` | UE4SS (Lua) + audio companion | Placeable boombox with spatial shanty playback |
-| `PalBoomboxItem/` | PalSchema (JSON) | The craftable **Boombox** item: icon, recipe |
+## Field Boombox
 
-The Pal Whip is a real **equippable melee weapon** with a custom icon, craftable at the
-**Primitive Workbench** (5× Leather + 10× Wood). Put it on your weapon wheel, hold it in
-your hands, and the whip key cracks it; without it equipped you get told to go get it.
-(`ItemRequirement` in the Lua config relaxes this to `"inventory"` or `"none"` — the
-latter is pure-hotkey mode for players who skip PalSchema.)
+The Field Boombox is now a real Palworld building, not a coordinate marker or a
+Lua-spawned actor.
 
-> **Heads-up:** the whip is also a functioning light melee weapon (25 attack). Swinging it
-> at your own pals *hurts them* like any weapon would — the healing crack is the whip key,
-> not the swing.
+1. Craft a **Boombox** at a Primitive Workbench (20 Wood + 10 Stone).
+2. Unlock **Field Boombox** in Technology at level 1 (0 Technology Points).
+3. Open Palworld's normal build menu and place it like any other furniture.
+4. Its synchronized sea-shanty playlist starts automatically after the
+   completed replicated building appears.
+5. Press **F8** to pause or resume and **F9** to start the next bundled song.
+   Next Track seeks directly to the beginning of that song.
+6. Use Palworld's normal dismantle mode to remove it and stop playback.
 
-## Easy install (for friends)
+Palworld therefore owns placement preview, rotation, collision validation,
+construction, replication, save persistence, damage, and dismantling. The
+placeable uses a compact native electronic-furniture Blueprint with the custom
+boombox icon. The mod never calls UE4SS actor-spawn functions.
 
-Extract the whole mod zip somewhere, then right-click **`install.ps1`** → *Run with
-PowerShell*. It finds your Steam Palworld automatically (or asks), downloads UE4SS and
-PalSchema from their official GitHub releases if you don't have them, applies the required
-settings, and installs all four mod parts. Safe to re-run — it skips anything already
-installed. Close Palworld first.
+There is no separate Pal Tools window and no hidden chat-message transport.
+Normal world scans, synchronization, startup, and track changes are silent.
+Only explicit local controls provide a concise in-game confirmation:
 
-## Manual installation
+- **F5**: lower local listening volume by 25%
+- **F6**: raise local listening volume by 25% (up to 300%)
+- **F7**: crack the equipped Pal Whip
+- **F8**: pause or resume the Field Boombox
+- **F9**: seek to the beginning of the next track
 
-1. **Install UE4SS for Palworld** (the experimental build required by current Palworld):
-   - Easiest: subscribe to *UE4SS Experimental (Palworld)* on the Steam Workshop, **or**
-   - Manual: follow the [PalMods UE4SS guide](https://www.palmods.gg/guides/modding/ue4ss).
-2. **Install [PalSchema](https://www.nexusmods.com/palworld/mods/3037)** (also on the Steam
-   Workshop) — it lives in `Pal\Binaries\Win64\ue4ss\Mods\PalSchema`.
-3. Copy **`PalWhip`** and **`PalBoombox`** into `Pal\Binaries\Win64\ue4ss\Mods\`
-   (older UE4SS builds use `Pal\Binaries\Win64\Mods\`; the included `enabled.txt`
-   auto-enables them — if your UE4SS uses `mods.txt`, add `PalWhip : 1` etc.).
-4. Copy **`PalWhipItem`** and **`PalBoomboxItem`** into
-   `Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\`.
-5. Launch the game. Craft the **Pal Whip** at a Primitive Workbench, walk into your base,
-   press **F7**:
-   ```
-   *CRACK* 4 pal(s) snapped back to normal. Back to work!
-   ```
+Listening volume is saved per PC. Values above 100% use up to three synchronized
+audio layers, so the boost is real rather than being clipped by WPF's 100%
+`MediaPlayer.Volume` limit.
+
+### Multiplayer behavior
+
+Every player who should hear the music must install the same release. Palworld
+replicates the placed Field Boombox to all clients. Each client discovers that
+same completed `PalBoombox` build object and calculates spatial volume and stereo
+pan from their own position and camera.
+
+The nine bundled files and their reviewed durations form one deterministic UTC
+playlist. This means all clients select the same track and seek position without
+depending on chat delivery order, host/client authority, or a one-time placement
+packet. A player joining later synchronizes automatically. Playback drift is
+checked every 15 seconds and corrected only when it exceeds four seconds.
+
+F8/F9 currently control the local listener. Shared pause/seek state requires a
+cooked replicated Palworld LogicMod; UE4SS interface out-parameter rewriting is
+not used because it is unsafe on Palworld 1.0.
+
+If several Field Boomboxes exist, each player hears the nearest one. They all
+carry the same synchronized station program, which keeps multiplayer behavior
+deterministic while allowing radios at more than one base.
+
+The bundled playlist contains:
+
+- Blow The Man Down
+- Bully In The Alley
+- Drunken Sailor
+- Leave Her Johnny
+- Maggie May
+- Sail the Raging Sea
+- Roll Jordan Roll
+- Down to the River to Pray
+- Gonna See Miss Liza
+
+The installer preserves personal files already in `PalBoombox\music`, but the
+shared station intentionally plays only the preinstalled release manifest.
+Additional shared soundtracks should be added to a future release so every
+client receives the same file and timing metadata. The old external Windows file
+picker has been removed.
+
+### Spatial audio implementation
+
+Palworld's Wwise runtime cannot decode arbitrary MP3 files. A hidden PowerShell
+companion therefore uses Windows `MediaPlayer` for decoding. Lua scans the native
+replicated build object once per second and stores only its numeric coordinates;
+it never retains a transient Unreal object between ticks. At 10 Hz it writes
+distance falloff, camera-relative stereo balance, track, and seek state.
+
+The first 8 metres remain at full listening volume. Between 8 and 80 metres a
+smoothstep curve lowers the distant signal earlier and reaches silence with a
+zero-slope tail, avoiding an audible cliff at the outer boundary.
+
+IPC snapshots contain matching `seq` and `commit` values. The companion ignores
+a partially rewritten snapshot and continues using the last complete one. This
+prevents file-read races from briefly stopping, changing, or desynchronizing
+playback.
+
+## Pal Whip
+
+Craft the **Pal Whip** at a Primitive Workbench (5 Leather + 10 Wood), equip it,
+stand near your base, and press **F7**. It can:
+
+- clear Depression, Ulcer, Sprain, Fracture, Weakness, Cold, and related sickness;
+- restore SAN to 100;
+- heal to full HP (enabled by default);
+- refill hunger (optional, disabled by default).
+
+The whip is also a light melee weapon. Swinging it normally deals damage; the
+restorative effect is the F7 crack action. Pal state is server-authoritative, so
+in hosted co-op the host should perform the restorative crack.
 
 ## Configuration
 
-Edit [PalWhip/Scripts/config.lua](PalWhip/Scripts/config.lua):
+Edit `PalWhip/Scripts/config.lua` or `PalBoombox/Scripts/config.lua` in the
+installed UE4SS Mods folder, then restart the game. Existing configuration files
+are preserved across installer updates, while missing new settings receive safe
+defaults in Lua.
 
-| Option | Default | Meaning |
-|---|---|---|
-| `WhipKey` | `"F7"` | The whip key ([key names](https://docs.ue4ss.com/lua-api/table-definitions/key.html)) |
-| `Range` | `9000` | Effect radius in cm (90 m ≈ a whole base). `0` = all loaded pals |
-| `OwnedOnly` | `true` | Only whip pals that have an owner (skip wild pals) |
-| `CureSickness` | `true` | Clear Depression/Ulcer/Sprain/Fracture/Weakness/Cold... |
-| `RestoreSanity` | `true` | SAN back to 100 |
-| `HealHP` | `true` | HP back to full |
-| `FillStomach` | `false` | Also refill hunger |
-| `Cooldown` | `1.0` | Seconds between cracks |
-| `Announce` | `true` | Show the in-game chat message |
-| `ItemRequirement` | `"equipped"` | `"equipped"` (in hand) / `"inventory"` (carried) / `"none"` |
-| `WhipItemId` | `"PalWhip"` | Item id (must match `PalWhipItem/items/palwhip.json`) |
-| `PlaySound` | `true` | Play a sound on crack |
-| `SoundID` | `""` | Row name from the game's `DT_SoundID` table (tried first if set) |
-| `SoundEventName` | `""` | Exact loaded Wwise `AkAudioEvent` name to play |
-| `SoundEventPatterns` | whip, … | Fallback: first loaded event whose name contains a pattern |
-| `SoundDumpKey` | `"F8"` | Prints all loaded sound event names to the UE4SS console |
+Important boombox defaults:
 
-Changes apply after a game restart, or hot-reload mods with **Ctrl+R** in the UE4SS console.
+| Setting | Default | Meaning |
+|---|---:|---|
+| `VolumeDownKey` | `F5` | Lower local listening volume |
+| `VolumeUpKey` | `F6` | Raise local listening volume |
+| `PauseKey` | `F8` | Pause or resume local playback |
+| `NextTrackKey` | `F9` | Seek local playback to the next track |
+| `MasterVolume` | `1.5` | Initial 150% gain for a fresh install |
+| `MaxVolume` | `3.0` | Maximum layered gain |
+| `RefDistance` | `800` | Full-volume radius (8 m) |
+| `MaxDistance` | `8000` | Inaudible distance (80 m) |
+| `FadeExponent` | `0.65` | Shapes the smooth mid/outer-distance fade |
+| `ShowControlFeedback` | `true` | Confirm explicit volume presses in game |
+| `DebugLogging` | `false` | Enable UE4SS diagnostics only for troubleshooting |
 
-### Picking the perfect crack sound
+Important whip defaults include `WhipKey = "F7"`, `Range = 9000`,
+`ItemRequirement = "equipped"`, and toggles for sickness, SAN, HP, and hunger.
+Routine lifecycle logging is disabled unless `DebugLogging` is enabled.
 
-Palworld uses Wwise audio, and its sound event names aren't publicly documented, so PalWhip
-discovers them at runtime: by default it plays the first loaded event matching one of the
-`SoundEventPatterns`. To pick your favorite:
+## Manual installation
 
-1. In-game, press **F8** — every loaded sound event name is printed to the UE4SS console.
-2. Put the exact name into `SoundEventName` in `config.lua` and hot-reload (**Ctrl+R**).
+The one-click installer is the supported path. For development or unusual
+portable Steam layouts:
 
-### Tweaking the item
+1. Install the Palworld experimental build of
+   [UE4SS](https://github.com/Okaetsu/RE-UE4SS).
+2. Install [PalSchema](https://okaetsu.github.io/PalSchema/).
+3. Copy `PalWhip` and `PalBoombox` to
+   `Pal\Binaries\Win64\ue4ss\Mods\`.
+4. Copy `PalWhipItem` and `PalBoomboxItem` to
+   `Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\`.
 
-Edit [PalWhipItem/items/palwhip.json](PalWhipItem/items/palwhip.json) — recipe materials,
-price, weight, attack, durability, name, description. The icon is
-[PalWhipItem/resources/images/whip.png](PalWhipItem/resources/images/whip.png); replace it
-with any PNG you like (it's referenced as `$resource/PalWhipItem/whip`). The icon in this
-repo is generated by [tools/make_icon.ps1](tools/make_icon.ps1).
+Advanced users can run:
 
-### Choosing the in-hand model
-
-Palworld has no whip mesh, so the Pal Whip borrows a vanilla melee weapon actor via the
-item's `actorClass` — model, grip, swing animations and all. Default is the wooden club.
-Swap the `actorClass` line for any of these (paths extracted from the game's pak index):
-
-| Look | `actorClass` |
-|---|---|
-| Wooden club (default) | `/Game/Pal/Blueprint/Weapon/BP_Bat.BP_Bat` |
-| Stun baton | `/Game/Pal/Blueprint/Weapon/BP_ElecBaton.BP_ElecBaton` |
-| Meat cleaver | `/Game/Pal/Blueprint/Weapon/BP_MeatCutterKnife.BP_MeatCutterKnife` |
-| Sword | `/Game/Pal/Blueprint/Weapon/BP_Sword.BP_Sword` |
-| Katana | `/Game/Pal/Blueprint/Weapon/BP_Katana.BP_Katana` |
-| Spear | `/Game/Pal/Blueprint/Weapon/BP_Spear.BP_Spear` |
-
-A *true* whip mesh with its own crack animation would need a custom Blueprint + skeletal
-mesh packaged with the [Palworld Modding Kit](https://pwmodding.wiki/docs/category/palworld-modding-kit)
-(UE 5.1) into a `_P` patch pak — the `actorClass` field is exactly where such a Blueprint
-would plug in later.
-
-## The Boombox 📻
-
-Craft the **Boombox** at a Primitive Workbench (20× Wood + 10× Stone), then:
-
-- **F9** — set the boombox down where you stand / pick it back up. The music stays at
-  that spot: walk away and it fades with distance; turn your camera and it pans between
-  your left and right ear. Genuine spatial audio.
-- **F10** — next track.
-
-It ships with four hand-arranged 8-bit-style instrumental sea shanties, synthesized from
-the traditional (public-domain) melodies by [tools/make_shanties.py](tools/make_shanties.py):
-
-- *Wellerman*
-- *Leave Her Johnny*
-- *Bully in the Alley*
-- *Drunken Sailor*
-
-**Add your own music:** drop any `.wav` / `.mp3` / `.wma` into `PalBoombox\music\` —
-your own recordings of the real shanties, or anything else. F10 cycles through whatever
-is in the folder (alphabetical).
-
-### How the spatial audio works
-
-Palworld's Wwise audio engine can't play arbitrary files, so PalBoombox does it outside
-the game: the Lua mod samples your position and camera yaw ~10×/second, computes
-inverse-square distance falloff plus a camera-relative stereo pan (with a slight muffle
-for sounds behind you), and streams `volume`/`balance` values over a file-based IPC
-channel (`PalBoombox\ipc\`) to a tiny companion process
-([boombox_companion.ps1](PalBoombox/companion/boombox_companion.ps1) — pure PowerShell,
-WPF `MediaPlayer`, zero dependencies). The companion loops the track, follows the
-volume/pan stream, auto-starts when you first place the boombox, and exits itself when
-Palworld closes.
-
-Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
-keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
-item requirement, and companion auto-start.
-
-## How it works
-
-- **Item**: PalSchema registers `PalWhip` as a `Weapon` static item (`Weapon` /
-  `WeaponMelee`, Rank 1 → craftable at the Primitive Workbench) whose `actorClass` reuses
-  a vanilla melee weapon Blueprint for the held model and animations, plus a
-  `DT_ItemRecipeDataTable` row for the recipe and a custom icon imported from the PNG.
-- **Crack**: on keypress the Lua mod checks what you're holding
-  (`ShooterComponent.GetHasWeapon` → `ownItemID.StaticId`, falling back to an inventory
-  check via `PalUtility.GetLocalInventoryData` → `CountItemNum`), plays a sound
-  (`PalSoundUtility.PlaySoundByActor` for `SoundID`, else
-  `PlayAkEventSoundByActor` with a discovered `AkAudioEvent`), then finds all loaded
-  `PalCharacter` actors, filters to owned non-player pals in range, and resets the status
-  fields on each pal's `PalIndividualCharacterParameter.SaveParameter`:
-  `WorkerSick → None`, `SanityValue → 100`, `HP → GetMaxHP()`, `FullStomach → max`.
-
-Every game-API access is wrapped in `pcall`, so if a Palworld update renames a field the mod
-degrades gracefully (skips that fix and logs) instead of crashing the game.
-
-## Multiplayer (hosted co-op)
-
-- **The whip cure is host-side.** Pal status lives on the host's machine, so the *host*
-  cracking the whip cures the base for everyone — friends see the effects instantly.
-  A friend pressing F7 on their own machine does nothing real (client-side state isn't
-  authoritative).
-- **Items need everyone.** Item definitions are looked up locally, so every player in the
-  session should run `install.ps1` — otherwise the whip/boombox items appear broken to
-  players without the mods, and they can't craft them.
-- **Boombox audio is per-machine.** Each player hears only their own placed boombox;
-  positions aren't synced between players.
-
-## Notes & limitations
-
-- Pal state lives on the server; on a dedicated server the mods must be installed
-  server-side.
-- Works on the pals near *you* — stand in (or near) your base when you crack the whip.
-- The wielded model is a borrowed vanilla melee weapon (see "Choosing the in-hand model"),
-  not a bespoke whip mesh — that would require a custom asset pak.
-- If you crafted a Pal Whip with the pre-weapon version of this mod (when it was a
-  `Generic` item), drop/discard the old one and craft a fresh whip after updating.
-- Verified against PalSchema's documented item/recipe/resource formats and the game's
-  dumped SDK headers as of mid-2026. If a patch breaks a field name, check the UE4SS
-  console for `[PalWhip]` messages.
-
-## Repo layout
-
+```powershell
+.\install.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Palworld"
 ```
-PalWhip/                       # UE4SS Lua mod (whip)
-├── enabled.txt
-└── Scripts/main.lua, config.lua
-PalWhipItem/                   # PalSchema mod (whip item + icon)
-├── items/palwhip.json
-└── resources/images/whip.png
-PalBoombox/                    # UE4SS Lua mod (boombox)
-├── enabled.txt
-├── Scripts/main.lua, config.lua
-├── companion/boombox_companion.ps1   # spatial audio player process
-├── music/*.wav                # shanties (generated; add your own files here)
-└── ipc/                       # runtime state files (mod <-> companion)
-PalBoomboxItem/                # PalSchema mod (boombox item + icon)
-├── items/palboombox.json
-└── resources/images/boombox.png
-tools/make_icon.ps1            # regenerates the whip icon
-tools/make_boombox_icon.ps1    # regenerates the boombox icon
-tools/make_shanties.py         # regenerates the shanty WAVs
-package.ps1                    # builds PalWhip.zip for sharing
+
+## Development checks
+
+`tools/test_release.ps1` parses every PowerShell and Lua file, validates JSON,
+checks the native-building and no-chat/no-spawn invariants, validates layered
+gain and committed IPC, simulates an upgrade with personal music/configuration,
+builds the installer, and inspects its embedded payload.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\test_release.ps1
 ```

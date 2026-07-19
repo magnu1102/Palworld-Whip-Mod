@@ -1,0 +1,46 @@
+{
+    "PalBoombox": {
+        "Name": "Field Boombox",
+        "Description": "A shared spatial music station. F8 pauses or resumes, F9 starts the next shanty, and F5/F6 adjust your local listening volume.",
+        "BlueprintClassName": "BP_BuildObject_Television01_Iron",
+        "BlueprintClassSoft": "/Game/Pal/Blueprint/MapObject/BuildObject/Furniture/BP_BuildObject_Television01_Iron.BP_BuildObject_Television01_Iron_C",
+        "IconTexture": "$resource/PalBoomboxItem/boombox-v2",
+        "MaterialType": "Stone",
+        "MaterialSubType": "Copper",
+        "Hp": 2000,
+        "Defense": 2,
+        "bBelongToBaseCamp": false,
+        "DeteriorationDamage": 0.0,
+        "bShowHPGauge": true,
+        "BuildingData": {
+            "TypeA": "Furniture",
+            "TypeB": "Other",
+            "Rank": 1,
+            "BuildCapacity": 1,
+            "RequiredBuildWorkAmount": 1.0,
+            "AssetValue": 2000,
+            "RequiredEnergyType": "None",
+            "ConsumeEnergySpeed": 0.0,
+            "Material1_Id": "PalBoombox",
+            "Material1_Count": 1,
+            "bInstallAtReticle": true,
+            "bIsInstallOnlyOnBase": false,
+            "bIsInstallOnlyInDoor": false,
+            "bIsInstallOnlyHubAround": false,
+            "bInstallableNoObstacleFromCamera": true,
+            "BuildExpRate": 1.0
+        },
+        "Technology": {
+            "UnlockBuildObjects": [
+                "PalBoombox"
+            ],
+            "IconName": "Television01_Iron",
+            "IsBossTechnology": false,
+            "Name": "Field Boombox",
+            "Description": "Unlocks a replicated spatial music station with pause, resume, and next-track controls.",
+            "LevelCap": 1,
+            "Tier": 1,
+            "Cost": 0
+        }
+    }
+}

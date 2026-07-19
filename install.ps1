@@ -1,8 +1,9 @@
 # PalWhip + PalBoombox one-shot installer.
 #
-# Run this from the extracted mod zip (right-click -> Run with PowerShell).
+# Normally launched automatically from PalWhip-Setup.exe. This script can also
+# be run directly from a source checkout for advanced/custom-path installs.
 # It will:
-#   1. Find your Steam Palworld install (or ask you for the folder)
+#   1. Find your Steam Palworld install automatically
 #   2. Download + install UE4SS (experimental-palworld build) if missing
 #   3. Download + install PalSchema if missing
 #   4. Apply the required UE4SS settings
@@ -14,10 +15,50 @@
 #
 # Optional: .\install.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Palworld"
 #           -SkipGameCheck  (install even while Palworld is running, e.g. to another copy)
-param([string]$GamePath, [switch]$SkipGameCheck)
+param(
+    [string]$GamePath,
+    [switch]$SkipGameCheck,
+    # Regression-test only: bypass UAC for a disposable game tree under TEMP.
+    [switch]$TestNoElevation
+)
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Installing into Program Files normally requires elevation. Relaunch this
+# exact script as administrator and wait so the one-click launcher can report
+# the real exit code when installation finishes.
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($TestNoElevation) {
+    if (-not $GamePath) { throw '-TestNoElevation requires -GamePath.' }
+    $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    $testGamePath = [IO.Path]::GetFullPath($GamePath).TrimEnd('\') + '\'
+    if (-not $testGamePath.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '-TestNoElevation is restricted to disposable paths under TEMP.'
+    }
+}
+if (-not $isAdmin -and -not $TestNoElevation) {
+    $elevatedArgs = @(
+        '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', ('"{0}"' -f $PSCommandPath)
+    )
+    if ($GamePath) {
+        $elevatedArgs += '-GamePath'
+        $elevatedArgs += ('"{0}"' -f $GamePath)
+    }
+    if ($SkipGameCheck) { $elevatedArgs += '-SkipGameCheck' }
+
+    try {
+        $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs `
+            -ArgumentList $elevatedArgs -Wait -PassThru
+        exit $elevated.ExitCode
+    } catch {
+        Write-Host 'ERROR: Administrator access is required to install the mod.' -ForegroundColor Red
+        exit 1
+    }
+}
 
 $UE4SS_URL = 'https://github.com/Okaetsu/RE-UE4SS/releases/download/experimental-palworld/UE4SS-Palworld.zip'
 $PALSCHEMA_API = 'https://api.github.com/repos/Okaetsu/PalSchema/releases/latest'
@@ -26,7 +67,7 @@ $PALSCHEMA_FALLBACK_URL = 'https://github.com/Okaetsu/PalSchema/releases/downloa
 function Step($msg)  { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Ok($msg)    { Write-Host "    $msg" -ForegroundColor Green }
 function Skip($msg)  { Write-Host "    $msg (already installed, skipping)" -ForegroundColor DarkGray }
-function Fail($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red; Read-Host 'Press Enter to exit'; exit 1 }
+function Fail($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 # --- 0. Sanity: are the mod folders next to this script? -------------------
 $src = $PSScriptRoot
@@ -64,11 +105,7 @@ if (-not $GamePath) {
     }
 }
 if (-not $GamePath -or -not (Test-Path (Join-Path $GamePath 'Pal\Binaries\Win64'))) {
-    Write-Host 'Could not find Palworld automatically.'
-    $GamePath = Read-Host 'Paste your Palworld folder path (the one containing Pal and Palworld.exe)'
-    if (-not (Test-Path (Join-Path $GamePath 'Pal\Binaries\Win64'))) {
-        Fail "That doesn't look like a Palworld folder (no Pal\Binaries\Win64 inside)."
-    }
+    Fail 'Could not find the Steam Palworld installation automatically. Advanced users can run install.ps1 with -GamePath "D:\path\to\Palworld".'
 }
 Ok "Found: $GamePath"
 
@@ -77,7 +114,7 @@ if (-not $SkipGameCheck -and (Get-Process 'Palworld-Win64-Shipping' -ErrorAction
 }
 
 $w64 = Join-Path $GamePath 'Pal\Binaries\Win64'
-$tmp = Join-Path $env:TEMP 'palwhip_installer'
+$tmp = Join-Path $env:TEMP ("palwhip_installer_{0}" -f [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
 # --- 2. UE4SS --------------------------------------------------------------
@@ -135,13 +172,166 @@ if (Test-Path (Join-Path $palSchemaDir 'dlls\main.dll')) {
 
 # --- 4. The mods -----------------------------------------------------------
 Step 'PalWhip + PalBoombox mods'
+
+$boomboxSource = Join-Path $src 'PalBoombox'
+$boomboxTarget = Join-Path $modsDir 'PalBoombox'
+$targetMusic = Join-Path $boomboxTarget 'music'
+
+# v0.2.x used a separate WPF control panel, file picker, and command files.
+# The native-building release has no visible companion UI. Remove only these
+# known obsolete mod-owned files so an upgrade cannot leave the old window or
+# command poller behind.
+$obsoleteBoomboxFiles = @(
+    'companion\control_panel.ps1',
+    'companion\import_music.ps1',
+    'ipc\import_result.txt',
+    'ipc\menu_command.txt',
+    'ipc\menu_show.txt',
+    'ipc\welcome_seen.txt',
+    'ipc\whip_key.txt'
+)
+# Previous releases shipped four generated WAV arrangements and two recordings
+# that have now been replaced. Remove only byte-for-byte copies of those known
+# release files. A user replacement with the same name but different content
+# remains protected like every other personal file.
+$legacyBundledMusic = [ordered]@{
+    'bully_in_the_alley.wav' = '38C7486490D3FC1E4208856F66902306969D2C4686ECDC25E415367E208ABA89'
+    'drunken_sailor.wav' = '5D7B2F3C1AAAC316DF2448FB7753BC8C287AB277B8B76D8C560B4327FBD3F192'
+    'leave_her_johnny.wav' = '162D4FEB288D0A88BE2ABA644AAD086446D405BC80E7BAA3A15CE3442F370D1D'
+    'wellerman.wav' = '0EBDEDB7BF21CFEF1820EBA10C90BFD158328D19827CDC507A530FDEB4AE0C7F'
+    'Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9135E30CA26329F8E7FBF3C3C4607956C2F0934A22479602D4A40D52BED7F469'
+    'Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9E32040F696FD21C78DAFBE915238CDB0916FCAF40B1B0EDEE9E42DB107B8B90'
+}
+$legacyMusicToRemove = @()
+if (Test-Path -LiteralPath $targetMusic) {
+    foreach ($legacyName in $legacyBundledMusic.Keys) {
+        $legacyPath = Join-Path $targetMusic $legacyName
+        if ((Test-Path -LiteralPath $legacyPath) -and
+            (Get-FileHash -LiteralPath $legacyPath -Algorithm SHA256).Hash -eq $legacyBundledMusic[$legacyName]) {
+            $legacyMusicToRemove += $legacyPath
+        }
+    }
+}
+
+# Snapshot every existing file in the personal music folder. The merge below
+# never writes an existing music filename; this postcondition makes that
+# promise executable and causes the installer to fail loudly if it is ever
+# broken by a future change.
+$existingMusic = @{}
+if (Test-Path -LiteralPath $targetMusic) {
+    $musicPrefix = $targetMusic.TrimEnd('\') + '\'
+    Get-ChildItem -LiteralPath $targetMusic -Recurse -File |
+        Where-Object { $_.FullName -notin $legacyMusicToRemove } |
+        ForEach-Object {
+        $relativePath = $_.FullName.Substring($musicPrefix.Length)
+        $existingMusic[$relativePath] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    if ($existingMusic.Count -gt 0) {
+        Ok "$($existingMusic.Count) existing music file(s) protected"
+    }
+}
+
+# Keep user-edited settings across upgrades. New options still receive their
+# defaults in Lua when they are absent from an older preserved config.
+$preservedConfigs = @(
+    @{
+        Installed = Join-Path $modsDir 'PalWhip\Scripts\config.lua'
+        Backup = Join-Path $tmp 'PalWhip-config.lua'
+    },
+    @{
+        Installed = Join-Path $modsDir 'PalBoombox\Scripts\config.lua'
+        Backup = Join-Path $tmp 'PalBoombox-config.lua'
+    }
+)
+foreach ($configFile in $preservedConfigs) {
+    if (Test-Path -LiteralPath $configFile.Installed) {
+        Copy-Item -LiteralPath $configFile.Installed -Destination $configFile.Backup -Force
+    }
+}
+
+$installSucceeded = $false
+$removedLegacyBackups = @()
+try {
+if ($legacyMusicToRemove.Count -gt 0) {
+    $legacyBackupDir = Join-Path $tmp 'legacy-music-backup'
+    New-Item -ItemType Directory -Force $legacyBackupDir | Out-Null
+    foreach ($legacyPath in $legacyMusicToRemove) {
+        $backupPath = Join-Path $legacyBackupDir (Split-Path $legacyPath -Leaf)
+        Copy-Item -LiteralPath $legacyPath -Destination $backupPath -Force
+        $removedLegacyBackups += @{ Installed = $legacyPath; Backup = $backupPath }
+        Remove-Item -LiteralPath $legacyPath -Force
+    }
+}
+
 Copy-Item (Join-Path $src 'PalWhip') $modsDir -Recurse -Force
-Copy-Item (Join-Path $src 'PalBoombox') $modsDir -Recurse -Force
+
+# Merge the boombox update without replacing any existing music file. This
+# preserves imported songs and user replacements that share a bundled name.
+New-Item -ItemType Directory -Force $boomboxTarget | Out-Null
+Get-ChildItem -LiteralPath $boomboxSource -Force |
+    Where-Object { $_.Name -ne 'music' } |
+    ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $boomboxTarget -Recurse -Force
+    }
+
+$sourceMusic = Join-Path $boomboxSource 'music'
+New-Item -ItemType Directory -Force $targetMusic | Out-Null
+Get-ChildItem -LiteralPath $sourceMusic -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $destination = Join-Path $targetMusic $_.Name
+        if (-not (Test-Path -LiteralPath $destination)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+        }
+    }
+
+foreach ($relativePath in $existingMusic.Keys) {
+    $preservedFile = Join-Path $targetMusic $relativePath
+    if (-not (Test-Path -LiteralPath $preservedFile)) {
+        Fail "Music preservation check failed: '$relativePath' was removed."
+    }
+    $preservedHash = (Get-FileHash -LiteralPath $preservedFile -Algorithm SHA256).Hash
+    if ($preservedHash -ne $existingMusic[$relativePath]) {
+        Fail "Music preservation check failed: '$relativePath' was changed."
+    }
+}
+if ($existingMusic.Count -gt 0) {
+    Ok 'Existing music verified unchanged'
+}
+
 $schemaMods = Join-Path $palSchemaDir 'mods'
 New-Item -ItemType Directory -Force $schemaMods | Out-Null
 Copy-Item (Join-Path $src 'PalWhipItem') $schemaMods -Recurse -Force
 Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
+$legacyBoomboxIcon = Join-Path $schemaMods 'PalBoomboxItem\resources\images\boombox.png'
+if (Test-Path -LiteralPath $legacyBoomboxIcon) {
+    Remove-Item -LiteralPath $legacyBoomboxIcon -Force
+}
+foreach ($relativeFile in $obsoleteBoomboxFiles) {
+    $obsoletePath = Join-Path $boomboxTarget $relativeFile
+    if (Test-Path -LiteralPath $obsoletePath) {
+        Remove-Item -LiteralPath $obsoletePath -Force
+    }
+}
+$installSucceeded = $true
+} finally {
+    if (-not $installSucceeded) {
+        foreach ($legacyBackup in $removedLegacyBackups) {
+            Copy-Item -LiteralPath $legacyBackup.Backup -Destination $legacyBackup.Installed -Force
+        }
+    }
+    # A failed dependency/mod copy must never strand the bundled config over
+    # the user's settings. PowerShell executes finally even during exit/error.
+    foreach ($configFile in $preservedConfigs) {
+        if (Test-Path -LiteralPath $configFile.Backup) {
+            Copy-Item -LiteralPath $configFile.Backup -Destination $configFile.Installed -Force
+        }
+    }
+}
 Ok 'Mods installed'
+if ($legacyMusicToRemove.Count -gt 0) {
+    Ok "$($legacyMusicToRemove.Count) obsolete synthetic track(s) removed"
+}
+Ok 'Existing settings and custom music preserved'
 
 $music = Join-Path $modsDir 'PalBoombox\music'
 $trackCount = 0
@@ -160,6 +350,6 @@ Write-Host ''
 Write-Host '=============================================' -ForegroundColor Green
 Write-Host ' Done! Launch Palworld and enjoy:' -ForegroundColor Green
 Write-Host '   Pal Whip: craft at Primitive Workbench, equip, press F7'
-Write-Host '   Boombox:  craft at Primitive Workbench, press F9 to place, F10 = next song'
+Write-Host '   Boombox: craft it, then place Field Boombox from the build menu'
+Write-Host '   Volume:   F5 = down, F6 = up (local listening volume)'
 Write-Host '=============================================' -ForegroundColor Green
-Read-Host 'Press Enter to close'

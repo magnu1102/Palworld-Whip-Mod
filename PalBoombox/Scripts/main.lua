@@ -1,40 +1,82 @@
--- PalBoombox - a placeable boombox with spatial audio sea shanties.
+-- PalBoombox
 --
--- Press the place key to set the boombox down where you stand; it keeps
--- playing at that spot while you walk around. The mod tracks the player's
--- position and camera direction ~10x/second and streams volume + stereo
--- balance to a small audio companion process (PowerShell + WPF MediaPlayer)
--- over a file-based IPC channel, giving real distance falloff and panning.
+-- A completed Field Boombox is a real Palworld build object registered by
+-- PalSchema. Palworld owns placement preview, collision, replication, saving,
+-- and dismantling. This Lua layer only discovers that replicated object and
+-- feeds its numeric position to the hidden spatial-audio companion.
 --
--- UE4SS Lua mod. Client-side audio; works in single player / host.
+-- Multiplayer playback is deterministic: every client uses the same bundled
+-- playlist metadata and UTC clock. There are no chat telegrams, custom actor
+-- spawns, retained UObject references, or external control windows.
 
 local UEHelpers = require("UEHelpers")
 
-local ok_cfg, config = pcall(require, "config")
-if not ok_cfg or type(config) ~= "table" then config = {} end
+local okConfig, config = pcall(require, "config")
+if not okConfig or type(config) ~= "table" then config = {} end
 
-local PLACE_KEY      = config.PlaceKey       or "F9"
-local NEXT_KEY       = config.NextTrackKey   or "F10"
-local REQUIRE_ITEM   = (config.RequireItem   ~= false)
-local ITEM_ID        = config.ItemId         or "PalBoombox"
-local MASTER_VOLUME  = config.MasterVolume   or 0.8
-local REF_DIST       = config.RefDistance    or 800.0
-local MAX_DIST       = config.MaxDistance    or 8000.0
-local PAN_STRENGTH   = config.PanStrength    or 0.8
-local AUTO_START     = (config.AutoStartCompanion ~= false)
-local ANNOUNCE       = (config.Announce      ~= false)
+local function clamp(value, low, high)
+    value = tonumber(value) or low
+    return math.max(low, math.min(high, value))
+end
 
-local placed = false
-local boomboxPos = nil          -- {X=, Y=, Z=}
-local tracks = {}
-local trackIndex = 1
-local seq = 0
-local basePath = nil            -- resolved mod folder path relative to game cwd
+local VOLUME_DOWN_KEY = config.VolumeDownKey or "F5"
+local VOLUME_UP_KEY = config.VolumeUpKey or "F6"
+local PAUSE_KEY = config.PauseKey or "F8"
+-- Releases before the native-building rewrite used F10 for Next Track. UE4SS
+-- now owns F10 for its console, and upgrades intentionally preserve config.lua,
+-- so migrate only that known legacy value while respecting other custom keys.
+local NEXT_TRACK_KEY = config.NextTrackKey
+if NEXT_TRACK_KEY == nil or NEXT_TRACK_KEY == "F10" then NEXT_TRACK_KEY = "F9" end
+local VOLUME_STEP = clamp(config.VolumeStep or 0.25, 0.05, 1.0)
+local MAX_VOLUME = clamp(config.MaxVolume or 3.0, 1.0, 3.0)
+local masterVolume = clamp(config.MasterVolume or 1.5, 0.0, MAX_VOLUME)
+local REF_DISTANCE = math.max(1.0, tonumber(config.RefDistance) or 800.0)
+local MAX_DISTANCE = math.max(REF_DISTANCE + 1.0, tonumber(config.MaxDistance) or 8000.0)
+-- With a smoothstep base, exponents above 0.5 retain a zero-slope endpoint.
+-- Clamp old/custom settings accordingly so the outer edge cannot become a
+-- sudden audible cutoff again.
+local FADE_EXPONENT = clamp(config.FadeExponent or 0.65, 0.55, 2.0)
+local PAN_STRENGTH = clamp(config.PanStrength or 0.8, 0.0, 1.0)
+local AUTO_START = config.AutoStartCompanion ~= false
+local SHOW_FEEDBACK = config.ShowControlFeedback ~= false
+local DEBUG_LOGGING = config.DebugLogging == true
+local SHARED_CLOCK = config.SharedClockSync ~= false
+
+local BUILD_OBJECT_ID = "PalBoombox"
+local SCAN_INTERVAL = 1
+local RESYNC_INTERVAL = 15
+local DRIFT_TOLERANCE = 4.0
+
+local basePath = nil
+local playlist = nil
+local playlistDuration = 0.0
+local stationClockOffset = 0.0
+local stationPaused = false
+local stationPausedCursor = 0.0
+local localClockOrigin = os.time()
+local stateSequence = 0
+local seekSequence = 0
 local lastCompanionStart = 0
-local warnedNoCompanion = false
+local lastScanEpoch = 0
+local lastResyncEpoch = 0
+local currentRadio = nil
+local currentTrack = nil
+local currentSeek = 0.0
+local forceSeek = false
+local lastWrittenPlaying = nil
+local reportedErrors = {}
+local trackPresence = {}
 
-local function log(msg)
-    print(string.format("[PalBoombox] %s\n", tostring(msg)))
+local function debugLog(message)
+    if DEBUG_LOGGING then
+        print(string.format("[PalBoombox] %s\n", tostring(message)))
+    end
+end
+
+local function reportOnce(key, message)
+    if reportedErrors[key] then return end
+    reportedErrors[key] = true
+    print(string.format("[PalBoombox] ERROR: %s\n", tostring(message)))
 end
 
 local function tryGet(fn)
@@ -43,25 +85,33 @@ local function tryGet(fn)
     return nil
 end
 
-local function announce(context, text)
-    if ANNOUNCE then
-        pcall(function()
-            local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
-            if PalUtility and PalUtility:IsValid() then
-                local ok = pcall(function() PalUtility:SendSystemAnnounce(context, text) end)
-                if not ok then PalUtility:SendSystemAnnounce(context, FText(text)) end
-            end
-        end)
+local function getPawn()
+    local controller = tryGet(function() return UEHelpers.GetPlayerController() end)
+    if not controller or not tryGet(function() return controller:IsValid() end) then return nil end
+    local pawn = tryGet(function() return controller.Pawn end)
+    if pawn and tryGet(function() return pawn:IsValid() end) then
+        return pawn, controller
     end
-    log(text)
+    return nil
 end
 
--- ---------------------------------------------------------------------------
--- File IPC
--- ---------------------------------------------------------------------------
+local function notify(text)
+    if not SHOW_FEEDBACK then return end
+    local pawn = getPawn()
+    if not pawn then return end
+    pcall(function()
+        local utility = StaticFindObject("/Script/Pal.Default__PalUtility")
+        if utility and utility:IsValid() then
+            local ok = pcall(function() utility:SendSystemAnnounce(pawn, text) end)
+            if not ok then utility:SendSystemAnnounce(pawn, FText(text)) end
+        end
+    end)
+end
 
--- The game's working directory varies (Win64 or the game root), so probe for
--- the mod folder once and remember which prefix works.
+-- -------------------------------------------------------------------------
+-- Companion IPC
+-- -------------------------------------------------------------------------
+
 local function resolveBasePath()
     if basePath then return basePath end
     local candidates = {
@@ -70,251 +120,429 @@ local function resolveBasePath()
         "Mods/PalBoombox/",
     }
     for _, candidate in ipairs(candidates) do
-        local f = io.open(candidate .. "companion/boombox_companion.ps1", "r")
-        if f then
-            f:close()
+        local probe = io.open(candidate .. "companion/boombox_companion.ps1", "r")
+        if probe then
+            probe:close()
             basePath = candidate
-            log("Mod folder resolved to " .. candidate)
             return basePath
         end
     end
-    log("WARNING: could not locate the PalBoombox folder from the game's working directory")
+    reportOnce("base_path", "could not locate the installed PalBoombox folder")
     return nil
 end
 
 local function writeState(fields)
     local base = resolveBasePath()
-    if not base then return end
-    seq = seq + 1
-    fields.seq = seq
-    local lines = {}
-    for k, v in pairs(fields) do
-        table.insert(lines, string.format("%s=%s", k, tostring(v)))
+    if not base then return false end
+
+    stateSequence = stateSequence + 1
+    local lines = { "seq=" .. tostring(stateSequence) }
+    local keys = {}
+    for key in pairs(fields) do table.insert(keys, key) end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        table.insert(lines, string.format("%s=%s", key, tostring(fields[key])))
     end
-    local f = io.open(base .. "ipc/state.txt", "w")
-    if f then
-        f:write(table.concat(lines, "\n"))
-        f:close()
+    -- The companion accepts a snapshot only when these two values match. A
+    -- concurrent read of a partially rewritten file therefore keeps using
+    -- the previous complete state instead of briefly stopping or misplaying.
+    table.insert(lines, "commit=" .. tostring(stateSequence))
+
+    local file = io.open(base .. "ipc/state.txt", "w")
+    if not file then
+        reportOnce("state_write", "could not write the audio state file")
+        return false
     end
+    file:write(table.concat(lines, "\n"))
+    file:close()
+    return true
 end
 
--- Reads the companion heartbeat; returns alive (bool) and refreshes `tracks`.
-local function readCompanion()
+local function readCompanionStatus()
     local base = resolveBasePath()
-    if not base then return false end
-    local f = io.open(base .. "ipc/companion.txt", "r")
-    if not f then return false end
-    local alive = 0
-    local found = {}
-    for line in f:lines() do
-        local k, v = line:match("^([%w_]+)=(.*)$")
-        if k == "alive" then alive = tonumber(v) or 0 end
-        if k == "track" then table.insert(found, v) end
+    if not base then return nil end
+    local file = io.open(base .. "ipc/companion.txt", "r")
+    if not file then return nil end
+    local status = {}
+    for line in file:lines() do
+        local key, value = line:match("^([%w_]+)=(.*)$")
+        if key == "alive" then status.alive = tonumber(value) end
+        if key == "current" then status.current = value end
+        if key == "pos" then status.pos = tonumber(value) end
     end
-    f:close()
-    if #found > 0 then tracks = found end
-    return (os.time() - alive) < 8
+    file:close()
+    if not status.alive or os.time() - status.alive >= 8 then return nil end
+    return status
 end
 
 local function startCompanion()
+    if not AUTO_START then return end
     local base = resolveBasePath()
     if not base then return end
     local now = os.time()
     if now - lastCompanionStart < 15 then return end
     lastCompanionStart = now
-    local script = (base .. "companion/boombox_companion.ps1"):gsub("/", "\\")
-    log("Starting audio companion...")
-    os.execute(string.format(
-        'start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%s"',
-        script))
+    local launcher = (base .. "companion/launch_hidden.vbs"):gsub("/", "\\")
+    os.execute(string.format('wscript.exe //B //NoLogo "%s"', launcher))
 end
 
 local function ensureCompanion()
-    if readCompanion() then return true end
-    if AUTO_START then startCompanion() end
-    return false
-end
-
--- ---------------------------------------------------------------------------
--- Game queries
--- ---------------------------------------------------------------------------
-
-local function getPawn()
-    local pc = UEHelpers.GetPlayerController()
-    if not pc or not pc:IsValid() then return nil end
-    local pawn = tryGet(function() return pc.Pawn end)
-    if pawn and pawn:IsValid() then return pawn, pc end
+    local status = readCompanionStatus()
+    if status then return status end
+    startCompanion()
     return nil
 end
 
-local function hasBoomboxItem(pawn)
-    if not REQUIRE_ITEM then return true end
-    local ok, count = pcall(function()
-        local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
-        local inv = PalUtility:GetLocalInventoryData(pawn)
-        if inv and inv:IsValid() then
-            return inv:CountItemNum(FName(ITEM_ID))
+local function loadSavedVolume()
+    local base = resolveBasePath()
+    if not base then return end
+    local file = io.open(base .. "ipc/volume.txt", "r")
+    if not file then return end
+    local saved = tonumber(file:read("*l"))
+    file:close()
+    if saved then masterVolume = clamp(saved, 0.0, MAX_VOLUME) end
+end
+
+local function saveVolume()
+    local base = resolveBasePath()
+    if not base then return end
+    local file = io.open(base .. "ipc/volume.txt", "w")
+    if file then
+        file:write(string.format("%.2f", masterVolume))
+        file:close()
+    end
+end
+
+-- -------------------------------------------------------------------------
+-- Deterministic shared playlist
+-- -------------------------------------------------------------------------
+
+local function loadPlaylist()
+    if playlist then return #playlist > 0 end
+    playlist = {}
+    playlistDuration = 0.0
+    local base = resolveBasePath()
+    if not base then return false end
+    local file = io.open(base .. "shared_playlist.txt", "r")
+    if not file then
+        reportOnce("playlist", "shared_playlist.txt is missing; reinstall the current release")
+        return false
+    end
+    for line in file:lines() do
+        local durationText, filename = line:match("^([%d%.]+)|(.+)$")
+        local duration = tonumber(durationText)
+        if duration and duration > 1 and filename and filename ~= "" then
+            table.insert(playlist, {
+                duration = duration,
+                filename = filename:gsub("\r$", ""),
+            })
+            playlistDuration = playlistDuration + duration
         end
-        return nil
-    end)
-    if ok and count ~= nil then return count > 0 end
-    log("Could not check inventory for the Boombox item, allowing anyway")
+    end
+    file:close()
+    if #playlist == 0 or playlistDuration <= 0 then
+        reportOnce("playlist_empty", "the shared playlist contains no valid tracks")
+        return false
+    end
     return true
 end
 
--- Returns camera yaw in degrees (falls back to pawn yaw).
-local function getListenerYaw(pawn, pc)
-    local yaw = tryGet(function()
-        return pc.PlayerCameraManager:GetCameraRotation().Yaw
-    end)
-    if yaw == nil then
-        yaw = tryGet(function() return pawn:K2_GetActorRotation().Yaw end)
+local function stationCursor(epoch)
+    if not loadPlaylist() then return nil end
+    local clock = SHARED_CLOCK and epoch or (epoch - localClockOrigin)
+    if stationPaused then return stationPausedCursor % playlistDuration end
+    return (clock + stationClockOffset) % playlistDuration
+end
+
+local function trackAtCursor(cursor)
+    if not playlist or #playlist == 0 then return nil end
+    for index, entry in ipairs(playlist) do
+        if cursor < entry.duration then return entry, cursor, index end
+        cursor = cursor - entry.duration
     end
+    return playlist[1], 0.0, 1
+end
+
+local function scheduledTrack(epoch)
+    local cursor = stationCursor(epoch)
+    if cursor == nil then return nil end
+    return trackAtCursor(cursor)
+end
+
+local function playlistStart(index)
+    if index <= 1 then return 0.0 end
+    local cursor = 0.0
+    for current = 1, index - 1 do
+        cursor = cursor + playlist[current].duration
+    end
+    return cursor
+end
+
+local function trackExists(filename)
+    if trackPresence[filename] ~= nil then return trackPresence[filename] end
+    local base = resolveBasePath()
+    if not base then return false end
+    local file = io.open(base .. "music/" .. filename, "rb")
+    if not file then
+        trackPresence[filename] = false
+        return false
+    end
+    file:close()
+    trackPresence[filename] = true
+    return true
+end
+
+-- -------------------------------------------------------------------------
+-- Replicated build-object discovery
+-- -------------------------------------------------------------------------
+
+local function getBuildObjectId(actor)
+    return tryGet(function() return actor.BuildObjectId:ToString() end)
+end
+
+local function findNearestRadio(playerLocation)
+    -- Use the stable native base class and filter by the replicated row ID.
+    -- Blueprint-generated class lookup varies between UE4SS builds, while
+    -- PalBuildObject is part of the game's reflected native API.
+    local candidates = tryGet(function() return FindAllOf("PalBuildObject") end)
+    if type(candidates) ~= "table" then return nil end
+
+    local nearest = nil
+    local nearestSquared = math.huge
+    for _, actor in ipairs(candidates) do
+        local valid = tryGet(function() return actor:IsValid() end)
+        if valid and getBuildObjectId(actor) == BUILD_OBJECT_ID then
+            local available = tryGet(function() return actor:IsAvailable() end)
+            if available ~= false then
+                local location = tryGet(function() return actor:K2_GetActorLocation() end)
+                if location then
+                    local dx = location.X - playerLocation.X
+                    local dy = location.Y - playerLocation.Y
+                    local dz = location.Z - playerLocation.Z
+                    local distanceSquared = dx * dx + dy * dy + dz * dz
+                    if distanceSquared < nearestSquared then
+                        nearestSquared = distanceSquared
+                        -- Store only plain numbers. A UObject reference can become
+                        -- invalid between ticks when an object is dismantled.
+                        nearest = { x = location.X, y = location.Y, z = location.Z }
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function listenerYaw(pawn, controller)
+    local yaw = tryGet(function()
+        return controller.PlayerCameraManager:GetCameraRotation().Yaw
+    end)
+    if yaw == nil then yaw = tryGet(function() return pawn:K2_GetActorRotation().Yaw end) end
     return yaw or 0.0
 end
 
-local function prettyTrackName(file)
-    local name = file:gsub("%.%w+$", ""):gsub("_", " ")
-    return (name:gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end))
+local function stopPlayback()
+    currentRadio = nil
+    currentTrack = nil
+    if lastWrittenPlaying ~= false then
+        writeState({ playing = 0 })
+        lastWrittenPlaying = false
+    end
 end
 
--- ---------------------------------------------------------------------------
--- Spatial update loop (runs while placed)
--- ---------------------------------------------------------------------------
+local function circularDifference(a, b, duration)
+    local difference = math.abs(a - b)
+    if duration and duration > 0 then difference = math.min(difference, duration - difference) end
+    return difference
+end
 
-local function spatialTick()
-    if not placed or not boomboxPos then return true end -- true stops the loop
-
-    local pawn, pc = getPawn()
-    if not pawn then return false end
-
-    local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
-    if not loc then return false end
-
-    local dx = boomboxPos.X - loc.X
-    local dy = boomboxPos.Y - loc.Y
-    local dz = boomboxPos.Z - loc.Z
-    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    -- Inverse-square-ish falloff with a hard cutoff.
-    local volume = 0.0
-    if dist < MAX_DIST then
-        volume = MASTER_VOLUME / (1.0 + (dist / REF_DIST) ^ 2)
-        volume = volume * (1.0 - dist / MAX_DIST) ^ 0.3 -- ease to zero at the edge
+local function playbackTick()
+    local pawn, controller = getPawn()
+    if not pawn then
+        stopPlayback()
+        return false
     end
 
-    -- Pan: angle of the boombox relative to the camera's facing direction.
-    -- UE yaw and atan2(dy,dx) share the same convention (0 = +X, + toward +Y),
-    -- so balance = sin(relative angle): +1 fully right, -1 fully left.
+    local playerLocation = tryGet(function() return pawn:K2_GetActorLocation() end)
+    if not playerLocation then
+        stopPlayback()
+        return false
+    end
+
+    local now = os.time()
+    if now - lastScanEpoch >= SCAN_INTERVAL then
+        lastScanEpoch = now
+        currentRadio = findNearestRadio(playerLocation)
+    end
+    if not currentRadio then
+        stopPlayback()
+        return false
+    end
+
+    local entry, scheduledSeek = scheduledTrack(now)
+    if not entry then
+        stopPlayback()
+        return false
+    end
+    if not trackExists(entry.filename) then
+        reportOnce("missing_" .. entry.filename,
+            "bundled track is missing: " .. entry.filename .. "; reinstall the current release")
+        stopPlayback()
+        return false
+    end
+
+    local companion = ensureCompanion()
+    local needsSeek = forceSeek or currentTrack ~= entry.filename
+    if needsSeek then
+        currentTrack = entry.filename
+        currentSeek = scheduledSeek
+        seekSequence = seekSequence + 1
+        lastResyncEpoch = now
+        forceSeek = false
+    elseif not stationPaused and now - lastResyncEpoch >= RESYNC_INTERVAL then
+        lastResyncEpoch = now
+        if not companion or companion.current ~= entry.filename or
+            circularDifference(companion.pos or -9999, scheduledSeek, entry.duration) > DRIFT_TOLERANCE then
+            currentSeek = scheduledSeek
+            seekSequence = seekSequence + 1
+        end
+    end
+
+    local dx = currentRadio.x - playerLocation.X
+    local dy = currentRadio.y - playerLocation.Y
+    local dz = currentRadio.z - playerLocation.Z
+    local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    local volume = 0.0
+    if distance <= REF_DISTANCE then
+        volume = masterVolume
+    elseif distance < MAX_DISTANCE then
+        -- Smoothstep gives both ends a zero slope: the signal leaves the full-
+        -- volume near field without a kink and approaches silence gradually.
+        -- Applying the configurable exponent after smoothstep retains a broad
+        -- outdoor field without the old linear curve's loud final metres.
+        local progress = clamp(
+            (distance - REF_DISTANCE) / (MAX_DISTANCE - REF_DISTANCE), 0.0, 1.0)
+        local smoothProgress = progress * progress * (3.0 - 2.0 * progress)
+        local fade = 1.0 - smoothProgress
+        volume = masterVolume * fade ^ FADE_EXPONENT
+    end
+
     local balance = 0.0
-    if dist > 50 then
-        local yaw = getListenerYaw(pawn, pc)
-        local rel = math.rad(math.deg(math.atan(dy, dx)) - yaw)
-        balance = math.sin(rel) * PAN_STRENGTH
-        -- Slightly muffle sounds behind the listener.
-        volume = volume * (0.85 + 0.15 * math.cos(rel))
+    if distance > 50 then
+        local relativeAngle = math.rad(math.deg(math.atan(dy, dx)) - listenerYaw(pawn, controller))
+        balance = math.sin(relativeAngle) * PAN_STRENGTH
+        volume = volume * (0.85 + 0.15 * math.cos(relativeAngle))
     end
 
     writeState({
-        playing = 1,
-        track = tracks[trackIndex] or "",
-        volume = string.format("%.3f", volume),
-        balance = string.format("%.3f", balance),
+        playing = stationPaused and 0 or 1,
+        track = currentTrack,
+        volume = string.format("%.3f", clamp(volume, 0.0, MAX_VOLUME)),
+        balance = string.format("%.3f", clamp(balance, -1.0, 1.0)),
+        seek = string.format("%.3f", currentSeek),
+        seekseq = seekSequence,
     })
+    lastWrittenPlaying = not stationPaused
     return false
 end
 
--- ---------------------------------------------------------------------------
--- Key handlers
--- ---------------------------------------------------------------------------
+-- -------------------------------------------------------------------------
+-- Local controls
+-- -------------------------------------------------------------------------
 
-local function toggleBoombox()
-    local pawn = getPawn()
-    if not pawn then
-        log("No player pawn found (not in game yet?)")
-        return
-    end
-
-    if placed then
-        placed = false
-        boomboxPos = nil
-        writeState({ playing = 0 })
-        announce(pawn, "Boombox picked up. The sea falls silent.")
-        return
-    end
-
-    if not hasBoomboxItem(pawn) then
-        announce(pawn, "You need a Boombox in your inventory to set one down!")
-        return
-    end
-
-    ensureCompanion()
-    if #tracks == 0 then
-        readCompanion()
-    end
-    if #tracks == 0 then
-        if not warnedNoCompanion then
-            warnedNoCompanion = true
-            announce(pawn, "Boombox: audio companion is starting, try again in a few seconds...")
-        else
-            announce(pawn, "Boombox: no tracks found (is the companion running and the music folder populated?)")
-        end
-        return
-    end
-
-    local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
-    if not loc then return end
-    boomboxPos = { X = loc.X, Y = loc.Y, Z = loc.Z }
-    placed = true
-
-    announce(pawn, string.format("Boombox set down - now playing: %s",
-        prettyTrackName(tracks[trackIndex] or "?")))
-
-    LoopAsync(100, function()
-        return spatialTick()
-    end)
+local function displayTrackName(filename)
+    return (tostring(filename or "Music"):gsub("%.[^%.]+$", ""))
 end
 
-local function nextTrack()
-    readCompanion()
-    if #tracks == 0 then
-        log("No tracks available yet")
-        return
-    end
-    trackIndex = (trackIndex % #tracks) + 1
-    local pawn = getPawn()
-    if placed then
-        -- state is refreshed by the spatial loop; announce the change
-        if pawn then
-            announce(pawn, "Now playing: " .. prettyTrackName(tracks[trackIndex]))
-        end
+local function stationBaseClock(epoch)
+    return SHARED_CLOCK and epoch or (epoch - localClockOrigin)
+end
+
+local function toggleStationPause()
+    if not currentRadio or not loadPlaylist() then return end
+    local now = os.time()
+    if stationPaused then
+        stationClockOffset = (stationPausedCursor - stationBaseClock(now)) % playlistDuration
+        stationPaused = false
+        forceSeek = true
+        notify("Field Boombox resumed")
     else
-        if pawn then
-            announce(pawn, "Next up: " .. prettyTrackName(tracks[trackIndex]))
-        end
+        stationPausedCursor = stationCursor(now) or 0.0
+        stationPaused = true
+        forceSeek = true
+        notify("Field Boombox paused")
     end
 end
 
--- ---------------------------------------------------------------------------
--- Registration
--- ---------------------------------------------------------------------------
+local function nextStationTrack()
+    if not currentRadio or not loadPlaylist() then return end
+    local now = os.time()
+    local cursor = stationCursor(now)
+    local _, _, currentIndex = trackAtCursor(cursor or 0.0)
+    local nextIndex = (currentIndex % #playlist) + 1
+    local nextCursor = playlistStart(nextIndex)
 
-local function bind(keyName, fallback, fn)
+    stationClockOffset = (nextCursor - stationBaseClock(now)) % playlistDuration
+    stationPausedCursor = nextCursor
+    stationPaused = false
+    forceSeek = true
+    notify("Now playing: " .. displayTrackName(playlist[nextIndex].filename))
+end
+
+local function setVolume(delta)
+    local previous = masterVolume
+    masterVolume = clamp(masterVolume + delta, 0.0, MAX_VOLUME)
+    saveVolume()
+    if math.abs(masterVolume - previous) < 0.001 then
+        notify(string.format("Boombox listening volume: %d%% (limit)",
+            math.floor(masterVolume * 100 + 0.5)))
+    else
+        notify(string.format("Boombox listening volume: %d%%",
+            math.floor(masterVolume * 100 + 0.5)))
+    end
+end
+
+local function registerKey(keyName, fallback, callback)
     local key = Key[keyName]
     if key == nil then
-        log(string.format("Unknown key '%s', falling back to %s", tostring(keyName), fallback))
+        reportOnce("key_" .. tostring(keyName),
+            string.format("unknown key '%s'; using %s", tostring(keyName), fallback))
         key = Key[fallback]
     end
-    RegisterKeyBind(key, {}, function()
-        ExecuteInGameThread(fn)
-    end)
+    RegisterKeyBind(key, {}, callback)
 end
 
-bind(PLACE_KEY, "F9", toggleBoombox)
-bind(NEXT_KEY, "F10", nextTrack)
+loadSavedVolume()
+loadPlaylist()
 
--- Make sure any stale state from a previous session doesn't keep playing.
-writeState({ playing = 0 })
+registerKey(VOLUME_DOWN_KEY, "F5", function()
+    ExecuteInGameThread(function() setVolume(-VOLUME_STEP) end)
+end)
+registerKey(VOLUME_UP_KEY, "F6", function()
+    ExecuteInGameThread(function() setVolume(VOLUME_STEP) end)
+end)
+registerKey(PAUSE_KEY, "F8", function()
+    ExecuteInGameThread(toggleStationPause)
+end)
+registerKey(NEXT_TRACK_KEY, "F9", function()
+    ExecuteInGameThread(nextStationTrack)
+end)
 
-log(string.format("Loaded. %s places/picks up the boombox, %s switches tracks.",
-    PLACE_KEY, NEXT_KEY))
+-- LoopAsync itself runs outside Unreal's game thread. Every UObject lookup and
+-- method call is marshalled back to the game thread, and at most one tick may
+-- be queued at a time. This avoids the cross-thread UObject access that made
+-- earlier builds vulnerable to native access violations.
+local tickQueued = false
+LoopAsync(100, function()
+    if not tickQueued then
+        tickQueued = true
+        ExecuteInGameThread(function()
+            local ok, err = pcall(playbackTick)
+            tickQueued = false
+            if not ok then reportOnce("playback_tick", "playback tick failed: " .. tostring(err)) end
+        end)
+    end
+    return false
+end)
+debugLog("loaded: native build discovery and deterministic shared playback active")

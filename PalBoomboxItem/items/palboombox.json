@@ -2,8 +2,8 @@
     "PalBoombox": {
         "Type": "Generic",
         "Name": "Boombox",
-        "Description": "A sturdy shipboard speaker loaded with sea shanties. Set it down (default: F9) and it keeps singing where you left it - walk away and the music fades astern. Next song: F10.",
-        "IconTexture": "$resource/PalBoomboxItem/boombox",
+        "Description": "A portable music station for shared adventures. Craft it, then place the Field Boombox from Palworld's build menu. Its synchronized spatial playlist is heard from the real replicated world object.",
+        "IconTexture": "$resource/PalBoomboxItem/boombox-v2",
         "TypeA": "Material",
         "TypeB": "MaterialProccessing",
         "Rank": 1,

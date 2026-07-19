@@ -1,1 +1,1 @@
-Runtime IPC files (state.txt / companion.txt) are written here by the mod and its audio companion. Safe to delete when the game is closed.
+Committed spatial-audio state is exchanged here by the mod and its hidden companion. Runtime files are omitted from releases; volume.txt is preserved across upgrades.

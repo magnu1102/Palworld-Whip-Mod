@@ -6,13 +6,17 @@
 # recordings into the music folder for the real deal.
 #
 # Usage: python tools/make_shanties.py
+# Tests can redirect output with PALBOOMBOX_SHANTY_OUT_DIR.
 import math
 import os
 import struct
 import wave
 
 SR = 22050
-OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "PalBoombox", "music")
+OUT_DIR = os.environ.get(
+    "PALBOOMBOX_SHANTY_OUT_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "PalBoombox", "music"),
+)
 
 NOTE_INDEX = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
