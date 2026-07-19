@@ -162,15 +162,16 @@ In hosted co-op, players with PalBoombox installed receive the position, track, 
 time through tagged global chat events, seek to the same playback point, and hear one
 shared source from that world position. The visible replicated prop is disabled for
 stability until its native actor-spawn path can be replaced.
-Custom tracks are matched by filename and must exist in every listener's `music` folder.
+The release ships with three full recordings selected for the shared boombox:
 
-It ships with four hand-arranged 8-bit-style instrumental sea shanties, synthesized from
-the traditional (public-domain) melodies by [tools/make_shanties.py](tools/make_shanties.py):
-
-- *Wellerman*
-- *Leave Her Johnny*
+- *Sail the Raging Sea (Sea Shanty)*
 - *Bully in the Alley*
-- *Drunken Sailor*
+- *Leave Her Johnny*
+
+Those defaults are installed on every machine, so they synchronize without any manual
+copying. Other custom tracks are still matched by filename and must exist in every
+listener's `music` folder; the current chat transport sends playback commands, not audio
+bytes.
 
 **Add your own music:** press F11 in-game and select as many `.mp3`, `.wav`, or `.wma`
 files as you want. The picker safely copies them into the installed `PalBoombox\music\`
@@ -228,9 +229,9 @@ actor-spawn path that caused such a crash has therefore been removed, not merely
   audio. For a host and two friends, install the same current release on all three PCs.
   Each player then hears the same placed source, with volume and stereo pan calculated
   independently from that player's position and camera direction.
-- **Music files are still local.** Every listener needs the same filename in their own
-  `PalBoombox\music` folder. Missing custom tracks are reported in chat instead of playing
-  the wrong song.
+- **Music files are still local.** The three bundled recordings are installed for everyone.
+  Any additional track needs the same filename in each listener's `PalBoombox\music`
+  folder. Missing custom tracks are reported in chat instead of playing the wrong song.
 - **One shared boombox is active at a time.** This version is designed as a single communal
   music source, not several independently playing radios. The sync path is implemented but
   still needs a live three-client gameplay pass after each Palworld update.
@@ -261,7 +262,7 @@ PalBoombox/                    # UE4SS Lua mod (boombox)
 ├── enabled.txt
 ├── Scripts/main.lua, config.lua
 ├── companion/boombox_companion.ps1   # spatial audio player process
-├── music/*.wav                # generated public-domain shanties only
+├── music/*.mp3                # three preinstalled release recordings
 └── ipc/                       # runtime state files (mod <-> companion)
 PalBoomboxItem/                # PalSchema mod (boombox item + icon)
 ├── items/palboombox.json

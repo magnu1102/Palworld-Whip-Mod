@@ -177,6 +177,27 @@ $boomboxSource = Join-Path $src 'PalBoombox'
 $boomboxTarget = Join-Path $modsDir 'PalBoombox'
 $targetMusic = Join-Path $boomboxTarget 'music'
 
+# v0.2.2 shipped four generated WAV arrangements. Remove only byte-for-byte
+# copies of those known files during the upgrade to the recording-based track
+# set. A user replacement with the same name but different content remains
+# protected like every other personal file.
+$legacyBundledMusic = [ordered]@{
+    'bully_in_the_alley.wav' = '38C7486490D3FC1E4208856F66902306969D2C4686ECDC25E415367E208ABA89'
+    'drunken_sailor.wav' = '5D7B2F3C1AAAC316DF2448FB7753BC8C287AB277B8B76D8C560B4327FBD3F192'
+    'leave_her_johnny.wav' = '162D4FEB288D0A88BE2ABA644AAD086446D405BC80E7BAA3A15CE3442F370D1D'
+    'wellerman.wav' = '0EBDEDB7BF21CFEF1820EBA10C90BFD158328D19827CDC507A530FDEB4AE0C7F'
+}
+$legacyMusicToRemove = @()
+if (Test-Path -LiteralPath $targetMusic) {
+    foreach ($legacyName in $legacyBundledMusic.Keys) {
+        $legacyPath = Join-Path $targetMusic $legacyName
+        if ((Test-Path -LiteralPath $legacyPath) -and
+            (Get-FileHash -LiteralPath $legacyPath -Algorithm SHA256).Hash -eq $legacyBundledMusic[$legacyName]) {
+            $legacyMusicToRemove += $legacyPath
+        }
+    }
+}
+
 # Snapshot every existing file in the personal music folder. The merge below
 # never writes an existing music filename; this postcondition makes that
 # promise executable and causes the installer to fail loudly if it is ever
@@ -184,7 +205,9 @@ $targetMusic = Join-Path $boomboxTarget 'music'
 $existingMusic = @{}
 if (Test-Path -LiteralPath $targetMusic) {
     $musicPrefix = $targetMusic.TrimEnd('\') + '\'
-    Get-ChildItem -LiteralPath $targetMusic -Recurse -File | ForEach-Object {
+    Get-ChildItem -LiteralPath $targetMusic -Recurse -File |
+        Where-Object { $_.FullName -notin $legacyMusicToRemove } |
+        ForEach-Object {
         $relativePath = $_.FullName.Substring($musicPrefix.Length)
         $existingMusic[$relativePath] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
     }
@@ -211,7 +234,20 @@ foreach ($configFile in $preservedConfigs) {
     }
 }
 
+$installSucceeded = $false
+$removedLegacyBackups = @()
 try {
+if ($legacyMusicToRemove.Count -gt 0) {
+    $legacyBackupDir = Join-Path $tmp 'legacy-music-backup'
+    New-Item -ItemType Directory -Force $legacyBackupDir | Out-Null
+    foreach ($legacyPath in $legacyMusicToRemove) {
+        $backupPath = Join-Path $legacyBackupDir (Split-Path $legacyPath -Leaf)
+        Copy-Item -LiteralPath $legacyPath -Destination $backupPath -Force
+        $removedLegacyBackups += @{ Installed = $legacyPath; Backup = $backupPath }
+        Remove-Item -LiteralPath $legacyPath -Force
+    }
+}
+
 Copy-Item (Join-Path $src 'PalWhip') $modsDir -Recurse -Force
 
 # Merge the boombox update without replacing any existing music file. This
@@ -251,7 +287,13 @@ $schemaMods = Join-Path $palSchemaDir 'mods'
 New-Item -ItemType Directory -Force $schemaMods | Out-Null
 Copy-Item (Join-Path $src 'PalWhipItem') $schemaMods -Recurse -Force
 Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
+$installSucceeded = $true
 } finally {
+    if (-not $installSucceeded) {
+        foreach ($legacyBackup in $removedLegacyBackups) {
+            Copy-Item -LiteralPath $legacyBackup.Backup -Destination $legacyBackup.Installed -Force
+        }
+    }
     # A failed dependency/mod copy must never strand the bundled config over
     # the user's settings. PowerShell executes finally even during exit/error.
     foreach ($configFile in $preservedConfigs) {
@@ -261,6 +303,9 @@ Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
     }
 }
 Ok 'Mods installed'
+if ($legacyMusicToRemove.Count -gt 0) {
+    Ok "$($legacyMusicToRemove.Count) obsolete synthetic track(s) removed"
+}
 Ok 'Existing settings and custom music preserved'
 
 $music = Join-Path $modsDir 'PalBoombox\music'

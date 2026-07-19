@@ -7,32 +7,30 @@
 #   PalBoomboxItem/ -> extract into  Pal\Binaries\Win64\ue4ss\Mods\PalSchema\mods\
 $ErrorActionPreference = 'Stop'
 
-# Generate the shanty WAVs if they're missing (they're gitignored).
 $music = Join-Path $PSScriptRoot 'PalBoombox\music'
-if (-not (Test-Path (Join-Path $music 'wellerman.wav'))) {
-    Write-Host 'Generating shanty audio...'
-    python (Join-Path $PSScriptRoot 'tools\make_shanties.py')
+# Never publish personal imports accidentally. Only the explicitly selected
+# release recordings, with their reviewed hashes, may enter the package.
+$bundledTracks = [ordered]@{
+    'Sail the Raging Sea (Sea Shanty) - Windrose.mp3' = '7E17FAEBECF090EEC7AA5724FDB5CB07F34A06087B33DA17FBF36180D00C6315'
+    'Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9135E30CA26329F8E7FBF3C3C4607956C2F0934A22479602D4A40D52BED7F469'
+    'Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9E32040F696FD21C78DAFBE915238CDB0916FCAF40B1B0EDEE9E42DB107B8B90'
 }
-
-# Never publish personal imports accidentally. Only the four generated,
-# public-domain shanty arrangements belong in the release package.
-$bundledTracks = @(
-    'bully_in_the_alley.wav',
-    'drunken_sailor.wav',
-    'leave_her_johnny.wav',
-    'wellerman.wav'
-)
 $unexpectedTracks = Get-ChildItem -LiteralPath $music -Recurse -File |
     Where-Object {
-        $_.DirectoryName -ne $music -or $_.Name -notin $bundledTracks
+        $_.DirectoryName -ne $music -or -not $bundledTracks.Contains($_.Name)
     }
 if ($unexpectedTracks) {
     $names = ($unexpectedTracks.Name | Sort-Object) -join ', '
-    throw "Refusing to package personal music files: $names. Keep personal tracks only in the installed PalBoombox\music folder."
+    throw "Refusing to package non-release music files: $names. Keep personal tracks only in the installed PalBoombox\music folder."
 }
-foreach ($track in $bundledTracks) {
-    if (-not (Test-Path -LiteralPath (Join-Path $music $track))) {
+foreach ($track in $bundledTracks.Keys) {
+    $trackPath = Join-Path $music $track
+    if (-not (Test-Path -LiteralPath $trackPath)) {
         throw "Bundled track is missing: $track"
+    }
+    $actualHash = (Get-FileHash -LiteralPath $trackPath -Algorithm SHA256).Hash
+    if ($actualHash -ne $bundledTracks[$track]) {
+        throw "Bundled track hash does not match the reviewed recording: $track"
     }
 }
 

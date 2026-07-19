@@ -94,10 +94,26 @@ try {
     $customConfigText = "return { MasterVolume = 0.42 }"
     [IO.File]::WriteAllText($mockConfig, $customConfigText, $utf8NoBom)
     [IO.File]::WriteAllBytes((Join-Path $mockMusic 'Personal Track.mp3'), [byte[]](11, 22, 33, 44, 55))
+    # Generate the previous release's deterministic WAVs into the disposable
+    # test tree. An exact legacy file must be migrated away, while a custom
+    # replacement that merely shares an old filename must remain untouched.
+    $legacyFixture = Join-Path $tempRoot 'legacy-generated-music'
+    $previousShantyOutput = $env:PALBOOMBOX_SHANTY_OUT_DIR
+    try {
+        $env:PALBOOMBOX_SHANTY_OUT_DIR = $legacyFixture
+        & python (Join-Path $repo 'tools\make_shanties.py') | Out-Host
+        Assert ($LASTEXITCODE -eq 0) 'Could not generate the legacy music migration fixture.'
+    } finally {
+        $env:PALBOOMBOX_SHANTY_OUT_DIR = $previousShantyOutput
+    }
+    Copy-Item -LiteralPath (Join-Path $legacyFixture 'wellerman.wav') -Destination $mockMusic
+    [IO.File]::WriteAllBytes((Join-Path $mockMusic 'drunken_sailor.wav'), [byte[]](9, 8, 7, 6, 5))
     New-Item -ItemType Directory -Force (Join-Path $mockMusic 'playlists') | Out-Null
     [IO.File]::WriteAllText((Join-Path $mockMusic 'playlists\keep-me.txt'), 'personal metadata', $utf8NoBom)
     $before = @{}
-    Get-ChildItem -LiteralPath $mockMusic -Recurse -File | ForEach-Object {
+    Get-ChildItem -LiteralPath $mockMusic -Recurse -File |
+        Where-Object { $_.Name -ne 'wellerman.wav' } |
+        ForEach-Object {
         $before[$_.FullName.Substring($mockMusic.Length)] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
     }
 
@@ -109,6 +125,8 @@ try {
         Assert (Test-Path -LiteralPath $afterPath) "Upgrade removed $relativePath"
         Assert ((Get-FileHash -LiteralPath $afterPath -Algorithm SHA256).Hash -eq $before[$relativePath]) "Upgrade changed $relativePath"
     }
+    Assert (-not (Test-Path -LiteralPath (Join-Path $mockMusic 'wellerman.wav'))) 'Upgrade retained an exact legacy synthetic track.'
+    Assert ((Get-FileHash -LiteralPath (Join-Path $mockMusic 'drunken_sailor.wav') -Algorithm SHA256).Hash -eq $before['\drunken_sailor.wav']) 'Upgrade removed a custom replacement that shares a legacy filename.'
     Assert ([IO.File]::ReadAllText($mockConfig).Trim() -eq $customConfigText) 'Upgrade did not preserve the custom boombox config.'
     Assert (Test-Path -LiteralPath (Join-Path $mockBoombox 'Scripts\main.lua')) 'Upgrade did not install PalBoombox code.'
     Assert (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem\items\palboombox.json')) 'Upgrade did not install the boombox item.'
@@ -128,8 +146,17 @@ try {
             $_ -match '^PalBoombox/ipc/(state|companion|import_result|menu_command|menu_show|welcome_seen|whip_key)\.txt$'
         })
         Assert ($runtimeEntries.Count -eq 0) 'Package contains runtime IPC files.'
+        $expectedMusicEntries = @(
+            'PalBoombox/music/Sail the Raging Sea (Sea Shanty) - Windrose.mp3',
+            'PalBoombox/music/Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3',
+            'PalBoombox/music/Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3'
+        )
         $musicEntries = @($entryNames | Where-Object { $_ -match '^PalBoombox/music/' })
-        Assert ($musicEntries.Count -eq 4) 'Package must contain exactly four bundled tracks.'
+        Assert ($musicEntries.Count -eq 3) 'Package must contain exactly three bundled tracks.'
+        foreach ($expectedMusicEntry in $expectedMusicEntries) {
+            Assert ($entryNames -contains $expectedMusicEntry) "Package is missing bundled track: $expectedMusicEntry"
+        }
+        Assert (-not ($musicEntries | Where-Object { $_ -match '\.wav$' })) 'Package still contains a synthetic WAV track.'
         Assert (-not ($entryNames -contains 'tools/test_release.ps1')) 'Package unexpectedly contains development tools.'
     } finally {
         $archive.Dispose()

@@ -6,10 +6,12 @@ package-lock.json
 __pycache__/
 *.pyc
 
-# Generated and personal audio (bundled shanties rebuild with
-# python tools/make_shanties.py). Personal tracks belong only in the installed
-# mod folder and must never be committed or published.
+# Personal audio stays local by default. Only the three explicitly selected
+# preinstalled release tracks are allowlisted.
 PalBoombox/music/*
+!PalBoombox/music/Sail the Raging Sea (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3
+!PalBoombox/music/Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3
 
 # Runtime IPC files
 PalBoombox/ipc/state.txt

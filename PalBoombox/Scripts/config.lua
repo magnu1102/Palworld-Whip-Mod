@@ -50,8 +50,8 @@ local config = {
 
     -- Share your boombox with other players via tagged in-game chat
     -- messages ("[BBX] ..."). Everyone who has this mod installed hears
-    -- the same track from the same spot. Music files are matched by filename,
-    -- so custom songs must exist in everyone's music folder.
+    -- the same track from the same spot. The bundled tracks are installed on
+    -- every machine; non-bundled songs must still be copied to each listener.
     ShareWithOtherPlayers = true,
 
     -- The in-world prop is intentionally unavailable in this release. Native
