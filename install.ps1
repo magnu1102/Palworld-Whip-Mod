@@ -77,6 +77,10 @@ foreach ($m in $modFolders) {
         Fail "Folder '$m' not found next to install.ps1. Extract the WHOLE zip first, then run install.ps1 from the extracted folder."
     }
 }
+$uninstallerSource = Join-Path $src 'Uninstall-PalWhip.ps1'
+if (-not (Test-Path -LiteralPath $uninstallerSource)) {
+    Fail "Uninstall-PalWhip.ps1 not found next to install.ps1. The installer payload is incomplete."
+}
 
 # --- 1. Find Palworld ------------------------------------------------------
 Step 'Locating Palworld'
@@ -312,6 +316,8 @@ foreach ($relativeFile in $obsoleteBoomboxFiles) {
         Remove-Item -LiteralPath $obsoletePath -Force
     }
 }
+Copy-Item -LiteralPath $uninstallerSource `
+    -Destination (Join-Path $GamePath 'Uninstall-PalWhip.ps1') -Force
 $installSucceeded = $true
 } finally {
     if (-not $installSucceeded) {

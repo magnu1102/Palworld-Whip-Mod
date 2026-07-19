@@ -6,6 +6,8 @@
 
 ### [Download the no-EXE manual ZIP: PalWhip-Manual.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Manual.zip)
 
+### [Download the standalone uninstaller: Uninstall-PalWhip.ps1](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/Uninstall-PalWhip.ps1)
+
 That EXE is the only download needed for a new installation or an update. Close
 Palworld, run it, and approve the Windows administrator prompt. It discovers the
 Steam installation, installs or reuses UE4SS and PalSchema, and installs both
@@ -21,6 +23,19 @@ previously ran the one-click installer already has them.
 Updates are in-place: do not uninstall first. User-edited configuration and the
 entire installed `PalBoombox\music` folder are verified and preserved. Obsolete
 mod-owned UI/runtime files from older releases are removed automatically.
+
+## Uninstalling
+
+First use Palworld's normal dismantle mode to remove every placed **Field
+Boombox**, discard every **Boombox** and **Pal Whip** item, and close the game.
+Then right-click `Uninstall-PalWhip.ps1` in the Palworld folder and choose **Run
+with PowerShell**. Type `UNINSTALL` when prompted.
+
+Both installation methods put the uninstaller in the Palworld folder. It removes
+only `PalWhip`, `PalBoombox`, `PalWhipItem`, and `PalBoomboxItem`; UE4SS,
+PalSchema, other mods, Palworld saves, and shared loader files are left alone.
+Before removal it backs up both configuration files and the entire music folder
+under `Documents\PalWhip Backups`.
 
 ## What is included
 

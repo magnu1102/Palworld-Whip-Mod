@@ -12,6 +12,18 @@ has both dependencies.
 5. Allow Windows to merge folders and replace the mod files.
 6. Launch Palworld.
 
+UNINSTALLING
+------------
+
+Before uninstalling, use Palworld's dismantle mode to remove every placed Field
+Boombox and discard every Boombox and Pal Whip item. Then close the game,
+right-click Uninstall-PalWhip.ps1 in the Palworld folder, and choose
+"Run with PowerShell". Type UNINSTALL when prompted.
+
+The uninstaller removes only this project's four mod folders. It leaves UE4SS,
+PalSchema, other mods, and Palworld saves alone. Your configuration files and
+entire music folder are backed up to Documents\PalWhip Backups first.
+
 The archive intentionally omits PalWhip/Scripts/config.lua and
 PalBoombox/Scripts/config.lua. Existing settings therefore remain untouched;
 fresh installs use the safe defaults embedded in the Lua code.
