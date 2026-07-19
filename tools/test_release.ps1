@@ -24,6 +24,11 @@ try {
     Assert ($uninstallerLauncherText.Contains('-ExecutionPolicy Bypass')) 'Uninstaller launcher does not bypass RemoteSigned for the downloaded PS1.'
     Assert ($uninstallerLauncherText.Contains('if not defined PALWHIP_UNINSTALL_NO_PAUSE pause')) 'Uninstaller launcher can close before showing its result.'
 
+    Write-Host 'Checking downloadable installer launcher...'
+    $installerLauncherText = [IO.File]::ReadAllText((Join-Path $repo 'Install-PalWhip.cmd'))
+    Assert ($installerLauncherText.Contains('-ExecutionPolicy Bypass')) 'Installer launcher does not bypass RemoteSigned for the downloaded PS1.'
+    Assert ($installerLauncherText.Contains('if not defined PALWHIP_INSTALL_NO_PAUSE pause')) 'Installer launcher can close before showing its result.'
+
     Write-Host 'Checking live-game update protection...'
     $installerText = [IO.File]::ReadAllText((Join-Path $repo 'install.ps1'))
     $runningGameGuard = $installerText.IndexOf("Get-Process 'Palworld-Win64-Shipping'")
@@ -219,7 +224,7 @@ try {
         Assert ((Get-FileHash -LiteralPath $backupMusicFile -Algorithm SHA256).Hash -eq $musicBeforeUninstall[$relativeName]) "Uninstaller changed backed-up music file: $relativeName"
     }
 
-    Write-Host 'Building and inspecting both release artifacts...'
+    Write-Host 'Building and inspecting all release artifacts...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'package.ps1')
     Assert ($LASTEXITCODE -eq 0) 'Installer build failed.'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -239,6 +244,7 @@ try {
     try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         Assert ($entryNames -contains 'install.ps1') 'Embedded payload is missing its installer logic.'
+        Assert ($entryNames -contains 'Install-PalWhip.cmd') 'Embedded payload is missing the PowerShell installer launcher.'
         Assert ($entryNames -contains 'Uninstall-PalWhip.ps1') 'Embedded payload is missing the uninstaller.'
         Assert ($entryNames -contains 'Uninstall-PalWhip.cmd') 'Embedded payload is missing the uninstaller launcher.'
         Assert (-not ($entryNames -contains 'Install PalWhip.bat')) 'Embedded payload still exposes the old batch launcher.'
@@ -273,6 +279,32 @@ try {
         Assert (-not ($entryNames -contains 'tools/test_release.ps1')) 'Package unexpectedly contains development tools.'
     } finally {
         $archive.Dispose()
+    }
+
+    $installerZipPath = Join-Path $repo 'PalWhip-Installer.zip'
+    Assert (Test-Path -LiteralPath $installerZipPath) 'PalWhip-Installer.zip was not created.'
+    $installerZipArchive = [IO.Compression.ZipFile]::OpenRead($installerZipPath)
+    try {
+        $installerZipEntries = @($installerZipArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+        foreach ($expectedInstallerEntry in @(
+            'install.ps1',
+            'Install-PalWhip.cmd',
+            'INSTALL-README.txt',
+            'PalWhip/Scripts/main.lua',
+            'PalBoombox/Scripts/main.lua',
+            'PalWhipItem/items/palwhip.json',
+            'PalBoomboxItem/buildings/palboombox.json',
+            'Uninstall-PalWhip.ps1',
+            'Uninstall-PalWhip.cmd'
+        )) {
+            Assert ($installerZipEntries -contains $expectedInstallerEntry) "PowerShell installer ZIP is missing: $expectedInstallerEntry"
+        }
+        $installerZipMusic = @($installerZipEntries | Where-Object { $_ -match '^PalBoombox/music/.+\.mp3$' })
+        Assert ($installerZipMusic.Count -eq 9) 'PowerShell installer ZIP must contain exactly nine bundled tracks.'
+        $installerZipRuntime = @($installerZipEntries | Where-Object { $_ -match '^PalBoombox/ipc/(state|companion|volume)\.txt$' })
+        Assert ($installerZipRuntime.Count -eq 0) 'PowerShell installer ZIP contains runtime IPC files.'
+    } finally {
+        $installerZipArchive.Dispose()
     }
 
     $manualPath = Join-Path $repo 'PalWhip-Manual.zip'
