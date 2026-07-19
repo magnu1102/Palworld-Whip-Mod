@@ -19,6 +19,11 @@ try {
             Assert ($errors.Count -eq 0) "PowerShell parse errors in $($_.FullName): $errors"
         }
 
+    Write-Host 'Checking downloadable uninstaller launcher...'
+    $uninstallerLauncherText = [IO.File]::ReadAllText((Join-Path $repo 'Uninstall-PalWhip.cmd'))
+    Assert ($uninstallerLauncherText.Contains('-ExecutionPolicy Bypass')) 'Uninstaller launcher does not bypass RemoteSigned for the downloaded PS1.'
+    Assert ($uninstallerLauncherText.Contains('if not defined PALWHIP_UNINSTALL_NO_PAUSE pause')) 'Uninstaller launcher can close before showing its result.'
+
     Write-Host 'Checking live-game update protection...'
     $installerText = [IO.File]::ReadAllText((Join-Path $repo 'install.ps1'))
     $runningGameGuard = $installerText.IndexOf("Get-Process 'Palworld-Win64-Shipping'")
@@ -168,6 +173,7 @@ try {
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockBoombox 'ipc\menu_command.txt'))) 'Upgrade retained obsolete panel IPC.'
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem\resources\images\boombox.png'))) 'Upgrade retained the obsolete boombox icon.'
     Assert (Test-Path -LiteralPath (Join-Path $mockGame 'Uninstall-PalWhip.ps1')) 'Installer did not place the uninstaller in the Palworld folder.'
+    Assert (Test-Path -LiteralPath (Join-Path $mockGame 'Uninstall-PalWhip.cmd')) 'Installer did not place the uninstaller launcher in the Palworld folder.'
 
     Write-Host 'Testing scoped uninstall, backup, and shared-loader preservation...'
     $mockWhipConfig = Join-Path $mockMods 'PalWhip\Scripts\config.lua'
@@ -183,10 +189,17 @@ try {
         $musicBeforeUninstall[$relativeName] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
     }
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'Uninstall-PalWhip.ps1') `
-        -GamePath $mockGame -BackupPath $uninstallBackup `
-        -AcknowledgeInGameCleanup -TestNoElevation
-    Assert ($LASTEXITCODE -eq 0) 'Mock uninstall failed.'
+    $previousNoPause = $env:PALWHIP_UNINSTALL_NO_PAUSE
+    try {
+        $env:PALWHIP_UNINSTALL_NO_PAUSE = '1'
+        & (Join-Path $repo 'Uninstall-PalWhip.cmd') `
+            -GamePath $mockGame -BackupPath $uninstallBackup `
+            -AcknowledgeInGameCleanup -TestNoElevation
+        $uninstallExitCode = $LASTEXITCODE
+    } finally {
+        $env:PALWHIP_UNINSTALL_NO_PAUSE = $previousNoPause
+    }
+    Assert ($uninstallExitCode -eq 0) 'Mock uninstall through the CMD launcher failed.'
     foreach ($removedTarget in @(
         (Join-Path $mockMods 'PalWhip'),
         (Join-Path $mockMods 'PalBoombox'),
@@ -227,6 +240,7 @@ try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         Assert ($entryNames -contains 'install.ps1') 'Embedded payload is missing its installer logic.'
         Assert ($entryNames -contains 'Uninstall-PalWhip.ps1') 'Embedded payload is missing the uninstaller.'
+        Assert ($entryNames -contains 'Uninstall-PalWhip.cmd') 'Embedded payload is missing the uninstaller launcher.'
         Assert (-not ($entryNames -contains 'Install PalWhip.bat')) 'Embedded payload still exposes the old batch launcher.'
         Assert (-not ($entryNames -contains 'PalBoombox/companion/control_panel.ps1')) 'Package still contains the external GUI.'
         Assert (-not ($entryNames -contains 'PalBoombox/companion/import_music.ps1')) 'Package still contains the external picker.'
@@ -268,6 +282,7 @@ try {
         $manualEntries = @($manualArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         Assert ($manualEntries -contains 'MANUAL-INSTALL.txt') 'Manual archive is missing its instructions.'
         Assert ($manualEntries -contains 'Uninstall-PalWhip.ps1') 'Manual archive is missing the uninstaller.'
+        Assert ($manualEntries -contains 'Uninstall-PalWhip.cmd') 'Manual archive is missing the uninstaller launcher.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalWhip/Scripts/main.lua') 'Manual archive is missing PalWhip.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalBoombox/Scripts/main.lua') 'Manual archive is missing PalBoombox.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalSchema/mods/PalWhipItem/items/palwhip.json') 'Manual archive is missing PalWhipItem.'
@@ -281,6 +296,19 @@ try {
         Assert ($manualMusic.Count -eq 9) 'Manual archive must contain exactly nine bundled tracks.'
     } finally {
         $manualArchive.Dispose()
+    }
+
+    $uninstallerPath = Join-Path $repo 'PalWhip-Uninstaller.zip'
+    Assert (Test-Path -LiteralPath $uninstallerPath) 'PalWhip-Uninstaller.zip was not created.'
+    $uninstallerArchive = [IO.Compression.ZipFile]::OpenRead($uninstallerPath)
+    try {
+        $uninstallerEntries = @($uninstallerArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+        Assert ($uninstallerEntries.Count -eq 3) 'Standalone uninstaller ZIP contains unexpected files.'
+        foreach ($expectedUninstallerEntry in 'Uninstall-PalWhip.ps1', 'Uninstall-PalWhip.cmd', 'UNINSTALL-README.txt') {
+            Assert ($uninstallerEntries -contains $expectedUninstallerEntry) "Standalone uninstaller ZIP is missing: $expectedUninstallerEntry"
+        }
+    } finally {
+        $uninstallerArchive.Dispose()
     }
 
     Write-Host 'All release regression checks passed.' -ForegroundColor Green

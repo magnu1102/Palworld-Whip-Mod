@@ -17,8 +17,9 @@ UNINSTALLING
 
 Before uninstalling, use Palworld's dismantle mode to remove every placed Field
 Boombox and discard every Boombox and Pal Whip item. Then close the game,
-right-click Uninstall-PalWhip.ps1 in the Palworld folder, and choose
-"Run with PowerShell". Type UNINSTALL when prompted.
+double-click Uninstall-PalWhip.cmd in the Palworld folder, approve the Windows
+administrator prompt, and type UNINSTALL when prompted. The launcher prevents
+Windows RemoteSigned policy from silently blocking the downloaded PS1 file.
 
 The uninstaller removes only this project's four mod folders. It leaves UE4SS,
 PalSchema, other mods, and Palworld saves alone. Your configuration files and

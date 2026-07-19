@@ -6,7 +6,7 @@
 
 ### [Download the no-EXE manual ZIP: PalWhip-Manual.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Manual.zip)
 
-### [Download the standalone uninstaller: Uninstall-PalWhip.ps1](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/Uninstall-PalWhip.ps1)
+### [Download the standalone uninstaller ZIP](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Uninstaller.zip)
 
 That EXE is the only download needed for a new installation or an update. Close
 Palworld, run it, and approve the Windows administrator prompt. It discovers the
@@ -28,8 +28,10 @@ mod-owned UI/runtime files from older releases are removed automatically.
 
 First use Palworld's normal dismantle mode to remove every placed **Field
 Boombox**, discard every **Boombox** and **Pal Whip** item, and close the game.
-Then right-click `Uninstall-PalWhip.ps1` in the Palworld folder and choose **Run
-with PowerShell**. Type `UNINSTALL` when prompted.
+Then double-click `Uninstall-PalWhip.cmd` in the Palworld folder, approve the
+Windows administrator prompt, and type `UNINSTALL`. The CMD launcher explicitly
+uses PowerShell's execution-policy bypass, avoiding the silent `RemoteSigned`
+block applied to PS1 files downloaded from the Internet.
 
 Both installation methods put the uninstaller in the Palworld folder. It removes
 only `PalWhip`, `PalBoombox`, `PalWhipItem`, and `PalBoomboxItem`; UE4SS,
