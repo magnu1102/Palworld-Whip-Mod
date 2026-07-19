@@ -1,7 +1,7 @@
 # PalWhip + PalBoombox one-shot installer.
 #
-# Double-click "Install PalWhip.bat" from the extracted mod zip. This script
-# can also be run directly for advanced/custom-path installs.
+# Normally launched automatically from PalWhip-Setup.exe. This script can also
+# be run directly from a source checkout for advanced/custom-path installs.
 # It will:
 #   1. Find your Steam Palworld install automatically
 #   2. Download + install UE4SS (experimental-palworld build) if missing
@@ -177,15 +177,17 @@ $boomboxSource = Join-Path $src 'PalBoombox'
 $boomboxTarget = Join-Path $modsDir 'PalBoombox'
 $targetMusic = Join-Path $boomboxTarget 'music'
 
-# v0.2.2 shipped four generated WAV arrangements. Remove only byte-for-byte
-# copies of those known files during the upgrade to the recording-based track
-# set. A user replacement with the same name but different content remains
-# protected like every other personal file.
+# Previous releases shipped four generated WAV arrangements and two recordings
+# that have now been replaced. Remove only byte-for-byte copies of those known
+# release files. A user replacement with the same name but different content
+# remains protected like every other personal file.
 $legacyBundledMusic = [ordered]@{
     'bully_in_the_alley.wav' = '38C7486490D3FC1E4208856F66902306969D2C4686ECDC25E415367E208ABA89'
     'drunken_sailor.wav' = '5D7B2F3C1AAAC316DF2448FB7753BC8C287AB277B8B76D8C560B4327FBD3F192'
     'leave_her_johnny.wav' = '162D4FEB288D0A88BE2ABA644AAD086446D405BC80E7BAA3A15CE3442F370D1D'
     'wellerman.wav' = '0EBDEDB7BF21CFEF1820EBA10C90BFD158328D19827CDC507A530FDEB4AE0C7F'
+    'Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9135E30CA26329F8E7FBF3C3C4607956C2F0934A22479602D4A40D52BED7F469'
+    'Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3' = '9E32040F696FD21C78DAFBE915238CDB0916FCAF40B1B0EDEE9E42DB107B8B90'
 }
 $legacyMusicToRemove = @()
 if (Test-Path -LiteralPath $targetMusic) {

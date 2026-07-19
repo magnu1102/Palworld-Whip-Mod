@@ -94,6 +94,16 @@ function Send-Command([string]$command) {
           <Button x:Name="NextButton" Content="Next Track" Margin="0,6,3,0" Background="#7C3AED"/>
           <Button x:Name="MusicButton" Content="Add Music" Margin="3,6,0,0" Background="#059669"/>
         </UniformGrid>
+        <Grid Margin="0,6,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="48"/>
+            <ColumnDefinition Width="48"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="Listening volume" VerticalAlignment="Center" Foreground="#D1D5DB"/>
+          <Button Grid.Column="1" x:Name="VolumeDownButton" Content="−" Margin="0,0,3,0" Padding="6,5" FontSize="17" Background="#475569"/>
+          <Button Grid.Column="2" x:Name="VolumeUpButton" Content="+" Margin="3,0,0,0" Padding="6,5" FontSize="17" Background="#475569"/>
+        </Grid>
       </StackPanel>
     </Border>
 
@@ -118,6 +128,8 @@ try {
     $toggleButton = $window.FindName('ToggleButton')
     $nextButton = $window.FindName('NextButton')
     $musicButton = $window.FindName('MusicButton')
+    $volumeDownButton = $window.FindName('VolumeDownButton')
+    $volumeUpButton = $window.FindName('VolumeUpButton')
     $closeButton = $window.FindName('CloseButton')
     $statusText = $window.FindName('StatusText')
     $window.FindName('WhipHint').Text = "Equip the whip, then click below. Shortcut: $WhipKey"
@@ -143,6 +155,14 @@ try {
     $musicButton.Add_Click({
         Send-Command 'music_add'
         $window.Close()
+    })
+    $volumeDownButton.Add_Click({
+        Send-Command 'volume_down'
+        $statusText.Text = 'Listening volume decreased by 10%.'
+    })
+    $volumeUpButton.Add_Click({
+        Send-Command 'volume_up'
+        $statusText.Text = 'Listening volume increased by 10%.'
     })
     $closeButton.Add_Click({ $window.Close() })
 

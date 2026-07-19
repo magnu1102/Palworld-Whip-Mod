@@ -2,12 +2,13 @@
 
 ## ⬇️ Download
 
-### **[Download the latest PalWhip.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip.zip)**
+### **[Download PalWhip-Setup.exe](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Setup.exe)**
 
-This is the recommended download for both new installations and updates. Close Palworld,
-extract the zip, then double-click **`Install PalWhip.bat`**. Existing settings and custom
-music are preserved. Do not use GitHub's automatically generated “Source code” archives;
-they do not contain the packaged music files.
+This is the only file needed for both new installations and updates. Close Palworld,
+double-click the downloaded EXE, and accept the Windows administrator prompt. Existing
+settings and custom music are preserved. The installer is not code-signed, so Windows may
+show an “unknown publisher” SmartScreen warning. GitHub's automatically generated
+“Source code” archives are for developers and do not provide the one-click installer.
 
 A Palworld mod with exactly one job: **craft a whip, crack it, and get your base pals back to normal.**
 
@@ -46,9 +47,8 @@ latter is pure-hotkey mode for players who skip PalSchema.)
 
 ## Download and one-click install
 
-Download **[the latest PalWhip.zip](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip.zip)**,
-close Palworld, extract the whole mod zip, then double-click **`Install PalWhip.bat`**.
-Accept the Windows administrator prompt and the installer handles everything else: it finds
+Download **[PalWhip-Setup.exe](https://github.com/magnu1102/Palworld-Whip-Mod/releases/latest/download/PalWhip-Setup.exe)**,
+close Palworld, and double-click it. Accept the Windows administrator prompt and the installer handles everything else: it finds
 Steam and Palworld, downloads UE4SS and PalSchema from their official GitHub releases when
 needed, applies the required settings, and installs all four mod parts. It is safe to run
 again when updating—the installer preserves your configuration and every existing music
@@ -58,8 +58,8 @@ present. No uninstall is needed.
 For an unusual portable installation that Steam discovery cannot find, advanced users can
 run `install.ps1 -GamePath "D:\path\to\Palworld"` from PowerShell.
 
-**Updating an existing install:** close Palworld, extract the newer zip, and double-click
-`Install PalWhip.bat` again. Do not uninstall first. The updater replaces mod code and item
+**Updating an existing install:** close Palworld and double-click the newer
+`PalWhip-Setup.exe`. Do not uninstall first. The updater replaces mod code and item
 definitions while retaining both config files and all existing music, including files whose
 names overlap a bundled track.
 
@@ -148,8 +148,8 @@ would plug in later.
 Craft the **Boombox** at a Primitive Workbench (20× Wood + 10× Stone), then:
 
 - **F6** — open the unified **Pal Tools** panel. It has clickable controls for cracking
-  the whip, placing/picking up the boombox, changing tracks, and adding music. A one-time
-  in-game hint introduces this menu after installation.
+  the whip, placing/picking up the boombox, changing tracks, adding music, and raising or
+  lowering your local listening volume. A one-time in-game hint introduces this menu.
 - **F9** — set the boombox down where you stand / pick it back up. The music stays at
   that spot: walk away and it fades with distance; turn your camera and it pans between
   your left and right ear. The in-world radio prop is temporarily disabled because actor
@@ -162,11 +162,14 @@ In hosted co-op, players with PalBoombox installed receive the position, track, 
 time through tagged global chat events, seek to the same playback point, and hear one
 shared source from that world position. The visible replicated prop is disabled for
 stability until its native actor-spawn path can be replaced.
-The release ships with three full recordings selected for the shared boombox:
+The release ships with six full recordings selected for the shared boombox:
 
 - *Sail the Raging Sea (Sea Shanty)*
-- *Bully in the Alley*
-- *Leave Her Johnny*
+- *Bully In The Alley (Sea Shanty)*
+- *Leave Her Johnny (Sea Shanty)*
+- *Maggie May (Sea Shanty)*
+- *Blow The Man Down (Sea Shanty)*
+- *Drunken Sailor (Sea Shanty)*
 
 Those defaults are installed on every machine, so they synchronize without any manual
 copying. Other custom tracks are still matched by filename and must exist in every
@@ -194,7 +197,9 @@ Palworld closes.
 Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
 keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
 item requirement, companion auto-start, multiplayer sharing, and whether the one-time
-Pal Tools hint is shown. The unsafe native marker path has been removed completely.
+Pal Tools hint is shown. The F6 volume buttons change and remember a per-player listening
+volume without forcing another player's PC louder. The unsafe native marker path has been
+removed completely.
 
 ## How it works
 
@@ -222,14 +227,14 @@ actor-spawn path that caused such a crash has therefore been removed, not merely
   A friend pressing F7 on their own machine does nothing real (client-side state isn't
   authoritative).
 - **Items need everyone.** Item definitions are looked up locally, so every player in the
-  session should use `Install PalWhip.bat`—otherwise the whip/boombox items appear broken
+  session should use `PalWhip-Setup.exe`—otherwise the whip/boombox items appear broken
   to players without the mods, and they can't craft them.
 - **Boombox audio is synchronized between modded players.** The host broadcasts the
   position, track, and start time; each player's local companion provides their spatial
   audio. For a host and two friends, install the same current release on all three PCs.
   Each player then hears the same placed source, with volume and stereo pan calculated
   independently from that player's position and camera direction.
-- **Music files are still local.** The three bundled recordings are installed for everyone.
+- **Music files are still local.** The six bundled recordings are installed for everyone.
   Any additional track needs the same filename in each listener's `PalBoombox\music`
   folder. Missing custom tracks are reported in chat instead of playing the wrong song.
 - **One shared boombox is active at a time.** This version is designed as a single communal
@@ -262,13 +267,14 @@ PalBoombox/                    # UE4SS Lua mod (boombox)
 ├── enabled.txt
 ├── Scripts/main.lua, config.lua
 ├── companion/boombox_companion.ps1   # spatial audio player process
-├── music/*.mp3                # three preinstalled release recordings
+├── music/*.mp3                # six preinstalled release recordings
 └── ipc/                       # runtime state files (mod <-> companion)
 PalBoomboxItem/                # PalSchema mod (boombox item + icon)
 ├── items/palboombox.json
 └── resources/images/boombox-v2.png
 tools/make_icon.ps1            # regenerates the whip icon
 tools/make_boombox_icon.ps1    # regenerates the boombox icon
-tools/make_shanties.py         # regenerates the shanty WAVs
-package.ps1                    # builds PalWhip.zip for sharing
+tools/make_shanties.py         # generates legacy WAV migration-test fixtures
+installer/                     # self-extracting EXE bootstrapper source + manifest
+package.ps1                    # builds PalWhip-Setup.exe for sharing
 ```

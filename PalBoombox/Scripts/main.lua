@@ -28,7 +28,7 @@ local MENU_KEY       = config.MenuKey        or "F6"
 local SHOW_WELCOME   = (config.ShowWelcomeHint ~= false)
 local REQUIRE_ITEM   = (config.RequireItem   ~= false)
 local ITEM_ID        = config.ItemId         or "PalBoombox"
-local MASTER_VOLUME  = clamp(config.MasterVolume or 0.8, 0.0, 1.0)
+local masterVolume   = clamp(config.MasterVolume or 0.8, 0.0, 1.0)
 local REF_DIST       = math.max(1.0, tonumber(config.RefDistance) or 800.0)
 local MAX_DIST       = math.max(REF_DIST + 1.0, tonumber(config.MaxDistance) or 8000.0)
 local PAN_STRENGTH   = clamp(config.PanStrength or 0.8, 0.0, 1.0)
@@ -174,6 +174,26 @@ local function hasTrack(name)
     return false
 end
 
+local function loadSavedVolume()
+    local base = resolveBasePath()
+    if not base then return end
+    local f = io.open(base .. "ipc/volume.txt", "r")
+    if not f then return end
+    local saved = tonumber(f:read("*l"))
+    f:close()
+    if saved then masterVolume = clamp(saved, 0.0, 1.0) end
+end
+
+local function saveVolume()
+    local base = resolveBasePath()
+    if not base then return end
+    local f = io.open(base .. "ipc/volume.txt", "w")
+    if f then
+        f:write(string.format("%.2f", masterVolume))
+        f:close()
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Game queries
 -- ---------------------------------------------------------------------------
@@ -249,7 +269,7 @@ local function spatialTick()
 
     local volume = 0.0
     if dist < MAX_DIST then
-        volume = MASTER_VOLUME / (1.0 + (dist / REF_DIST) ^ 2)
+        volume = masterVolume / (1.0 + (dist / REF_DIST) ^ 2)
         volume = volume * (1.0 - dist / MAX_DIST) ^ 0.3
     end
 
@@ -560,6 +580,16 @@ local function openControlPanel()
         cleanKeyArg(NEXT_KEY), cleanKeyArg(ADD_MUSIC_KEY)))
 end
 
+local function changeVolume(delta)
+    masterVolume = clamp(masterVolume + delta, 0.0, 1.0)
+    saveVolume()
+    local pawn = getPawn()
+    if pawn then
+        announce(pawn, string.format("Boombox listening volume: %d%%",
+            math.floor(masterVolume * 100 + 0.5)))
+    end
+end
+
 local function startControlPanelCommands()
     local base = resolveBasePath()
     if not base then return end
@@ -578,6 +608,10 @@ local function startControlPanelCommands()
                     nextTrack()
                 elseif message.command == "music_add" then
                     addMusic()
+                elseif message.command == "volume_down" then
+                    changeVolume(-0.1)
+                elseif message.command == "volume_up" then
+                    changeVolume(0.1)
                 end
             end)
         end
@@ -629,6 +663,7 @@ bind(NEXT_KEY, "F10", nextTrack)
 bind(ADD_MUSIC_KEY, "F11", addMusic)
 bind(MENU_KEY, "F6", openControlPanel)
 
+loadSavedVolume()
 startControlPanelCommands()
 scheduleWelcomeHint()
 

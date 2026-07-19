@@ -51,6 +51,14 @@ try {
         Assert (-not $boomboxLua.Contains($unsafeText)) "Unsafe marker code remains: $unsafeText"
     }
 
+    Write-Host 'Checking persistent GUI volume controls...'
+    $controlPanel = [IO.File]::ReadAllText((Join-Path $repo 'PalBoombox\companion\control_panel.ps1'))
+    foreach ($volumeCommand in 'volume_down', 'volume_up') {
+        Assert ($boomboxLua.Contains($volumeCommand)) "Lua is missing volume command: $volumeCommand"
+        Assert ($controlPanel.Contains($volumeCommand)) "Pal Tools is missing volume command: $volumeCommand"
+    }
+    Assert ($boomboxLua.Contains('ipc/volume.txt')) 'Listening volume is not persisted between sessions.'
+
     Write-Host 'Testing culture-invariant companion values...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
         (Join-Path $repo 'PalBoombox\companion\boombox_companion.ps1') -ValidateOnly
@@ -131,28 +139,44 @@ try {
     Assert (Test-Path -LiteralPath (Join-Path $mockBoombox 'Scripts\main.lua')) 'Upgrade did not install PalBoombox code.'
     Assert (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem\items\palboombox.json')) 'Upgrade did not install the boombox item.'
 
-    Write-Host 'Building and inspecting the release archive...'
+    Write-Host 'Building and inspecting the self-extracting installer...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'package.ps1')
-    Assert ($LASTEXITCODE -eq 0) 'Package build failed.'
+    Assert ($LASTEXITCODE -eq 0) 'Installer build failed.'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'PalWhip.zip'))
+    $setupPath = Join-Path $repo 'PalWhip-Setup.exe'
+    Assert (Test-Path -LiteralPath $setupPath) 'PalWhip-Setup.exe was not created.'
+    $setupAssembly = [Reflection.Assembly]::LoadFile($setupPath)
+    Assert ($setupAssembly.GetManifestResourceNames() -contains 'PalWhip.Payload.zip') 'Setup EXE is missing its embedded payload.'
+    $payloadPath = Join-Path $tempRoot 'embedded-payload.zip'
+    $payloadStream = $setupAssembly.GetManifestResourceStream('PalWhip.Payload.zip')
+    try {
+        $payloadFile = [IO.File]::Create($payloadPath)
+        try { $payloadStream.CopyTo($payloadFile) } finally { $payloadFile.Dispose() }
+    } finally {
+        $payloadStream.Dispose()
+    }
+    $archive = [IO.Compression.ZipFile]::OpenRead($payloadPath)
     try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
-        Assert ($entryNames -contains 'Install PalWhip.bat') 'Package is missing the one-click installer.'
+        Assert ($entryNames -contains 'install.ps1') 'Embedded payload is missing its installer logic.'
+        Assert (-not ($entryNames -contains 'Install PalWhip.bat')) 'Embedded payload still exposes the old batch launcher.'
         Assert ($entryNames -contains 'PalBoombox/companion/control_panel.ps1') 'Package is missing the GUI.'
         Assert ($entryNames -contains 'PalBoombox/companion/import_music.ps1') 'Package is missing the importer.'
         Assert ($entryNames -contains 'PalBoomboxItem/resources/images/boombox-v2.png') 'Package is missing the current icon.'
         $runtimeEntries = @($entryNames | Where-Object {
-            $_ -match '^PalBoombox/ipc/(state|companion|import_result|menu_command|menu_show|welcome_seen|whip_key)\.txt$'
+            $_ -match '^PalBoombox/ipc/(state|companion|import_result|menu_command|menu_show|welcome_seen|whip_key|volume)\.txt$'
         })
         Assert ($runtimeEntries.Count -eq 0) 'Package contains runtime IPC files.'
         $expectedMusicEntries = @(
             'PalBoombox/music/Sail the Raging Sea (Sea Shanty) - Windrose.mp3',
-            'PalBoombox/music/Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3',
-            'PalBoombox/music/Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3'
+            'PalBoombox/music/Bully In The Alley (Sea Shanty) - Windrose.mp3',
+            'PalBoombox/music/Leave Her Johnny (Sea Shanty) - Windrose.mp3',
+            'PalBoombox/music/Maggie May (Sea Shanty) - Windrose.mp3',
+            'PalBoombox/music/Blow The Man Down (Sea Shanty) - Windrose.mp3',
+            'PalBoombox/music/Drunken Sailor (Sea Shanty) - Windrose.mp3'
         )
         $musicEntries = @($entryNames | Where-Object { $_ -match '^PalBoombox/music/' })
-        Assert ($musicEntries.Count -eq 3) 'Package must contain exactly three bundled tracks.'
+        Assert ($musicEntries.Count -eq 6) 'Package must contain exactly six bundled tracks.'
         foreach ($expectedMusicEntry in $expectedMusicEntries) {
             Assert ($entryNames -contains $expectedMusicEntry) "Package is missing bundled track: $expectedMusicEntry"
         }

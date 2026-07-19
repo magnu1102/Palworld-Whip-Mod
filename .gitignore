@@ -1,17 +1,21 @@
 # Build artifacts
 PalWhip.zip
+PalWhip-Setup.exe
 node_modules/
 package.json
 package-lock.json
 __pycache__/
 *.pyc
 
-# Personal audio stays local by default. Only the three explicitly selected
+# Personal audio stays local by default. Only the six explicitly selected
 # preinstalled release tracks are allowlisted.
 PalBoombox/music/*
 !PalBoombox/music/Sail the Raging Sea (Sea Shanty) - Windrose.mp3
-!PalBoombox/music/Bully in the Alley - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3
-!PalBoombox/music/Leave Her Johnny - New Early Access Version  Windrose Sea Shanty & Lyrics.mp3
+!PalBoombox/music/Bully In The Alley (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/Leave Her Johnny (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/Maggie May (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/Blow The Man Down (Sea Shanty) - Windrose.mp3
+!PalBoombox/music/Drunken Sailor (Sea Shanty) - Windrose.mp3
 
 # Runtime IPC files
 PalBoombox/ipc/state.txt
@@ -21,3 +25,4 @@ PalBoombox/ipc/menu_command.txt
 PalBoombox/ipc/menu_show.txt
 PalBoombox/ipc/welcome_seen.txt
 PalBoombox/ipc/whip_key.txt
+PalBoombox/ipc/volume.txt
