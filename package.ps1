@@ -77,7 +77,7 @@ try {
     New-Item -ItemType Directory -Force $stage | Out-Null
     foreach ($part in @(
         'PalWhip', 'PalBoombox', 'PalWhipItem', 'PalBoomboxItem',
-        'install.ps1', 'README.md'
+        'install.ps1', 'Uninstall-PalWhip.ps1', 'README.md'
     )) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $part) -Destination $stage -Recurse -Force
     }
@@ -141,6 +141,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalWhipItem') -Destination $manualSchemaMods -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PalBoomboxItem') -Destination $manualSchemaMods -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'MANUAL-INSTALL.txt') -Destination $manualStage -Force
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall-PalWhip.ps1') -Destination $manualStage -Force
 
     foreach ($manualOnlyFile in @(
         (Join-Path $manualMods 'PalWhip\Scripts\config.lua'),

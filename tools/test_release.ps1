@@ -167,6 +167,44 @@ try {
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockBoombox 'companion\import_music.ps1'))) 'Upgrade retained the obsolete file picker.'
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockBoombox 'ipc\menu_command.txt'))) 'Upgrade retained obsolete panel IPC.'
     Assert (-not (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem\resources\images\boombox.png'))) 'Upgrade retained the obsolete boombox icon.'
+    Assert (Test-Path -LiteralPath (Join-Path $mockGame 'Uninstall-PalWhip.ps1')) 'Installer did not place the uninstaller in the Palworld folder.'
+
+    Write-Host 'Testing scoped uninstall, backup, and shared-loader preservation...'
+    $mockWhipConfig = Join-Path $mockMods 'PalWhip\Scripts\config.lua'
+    $customWhipConfigText = 'return { HealHP = false }'
+    [IO.File]::WriteAllText($mockWhipConfig, $customWhipConfigText, $utf8NoBom)
+    $unrelatedMod = Join-Path $mockMods 'OtherMod'
+    New-Item -ItemType Directory -Force $unrelatedMod | Out-Null
+    [IO.File]::WriteAllText((Join-Path $unrelatedMod 'keep.txt'), 'unrelated mod', $utf8NoBom)
+    $uninstallBackup = Join-Path $tempRoot 'uninstall-backup'
+    $musicBeforeUninstall = @{}
+    Get-ChildItem -LiteralPath $mockMusic -Recurse -File | ForEach-Object {
+        $relativeName = $_.FullName.Substring($mockMusic.Length).TrimStart('\')
+        $musicBeforeUninstall[$relativeName] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'Uninstall-PalWhip.ps1') `
+        -GamePath $mockGame -BackupPath $uninstallBackup `
+        -AcknowledgeInGameCleanup -TestNoElevation
+    Assert ($LASTEXITCODE -eq 0) 'Mock uninstall failed.'
+    foreach ($removedTarget in @(
+        (Join-Path $mockMods 'PalWhip'),
+        (Join-Path $mockMods 'PalBoombox'),
+        (Join-Path $mockMods 'PalSchema\mods\PalWhipItem'),
+        (Join-Path $mockMods 'PalSchema\mods\PalBoomboxItem')
+    )) {
+        Assert (-not (Test-Path -LiteralPath $removedTarget)) "Uninstaller retained mod target: $removedTarget"
+    }
+    Assert (Test-Path -LiteralPath (Join-Path $mockWin64 'ue4ss\UE4SS.dll')) 'Uninstaller removed the shared UE4SS loader.'
+    Assert (Test-Path -LiteralPath (Join-Path $mockMods 'PalSchema\dlls\main.dll')) 'Uninstaller removed the shared PalSchema loader.'
+    Assert ([IO.File]::ReadAllText((Join-Path $unrelatedMod 'keep.txt')).Trim() -eq 'unrelated mod') 'Uninstaller changed an unrelated mod.'
+    Assert ([IO.File]::ReadAllText((Join-Path $uninstallBackup 'PalWhip\Scripts\config.lua')).Trim() -eq $customWhipConfigText) 'Uninstaller did not back up PalWhip configuration.'
+    Assert ([IO.File]::ReadAllText((Join-Path $uninstallBackup 'PalBoombox\Scripts\config.lua')).Trim() -eq $customConfigText) 'Uninstaller did not back up PalBoombox configuration.'
+    foreach ($relativeName in $musicBeforeUninstall.Keys) {
+        $backupMusicFile = Join-Path (Join-Path $uninstallBackup 'PalBoombox\music') $relativeName
+        Assert (Test-Path -LiteralPath $backupMusicFile) "Uninstaller did not back up music file: $relativeName"
+        Assert ((Get-FileHash -LiteralPath $backupMusicFile -Algorithm SHA256).Hash -eq $musicBeforeUninstall[$relativeName]) "Uninstaller changed backed-up music file: $relativeName"
+    }
 
     Write-Host 'Building and inspecting both release artifacts...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'package.ps1')
@@ -188,6 +226,7 @@ try {
     try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         Assert ($entryNames -contains 'install.ps1') 'Embedded payload is missing its installer logic.'
+        Assert ($entryNames -contains 'Uninstall-PalWhip.ps1') 'Embedded payload is missing the uninstaller.'
         Assert (-not ($entryNames -contains 'Install PalWhip.bat')) 'Embedded payload still exposes the old batch launcher.'
         Assert (-not ($entryNames -contains 'PalBoombox/companion/control_panel.ps1')) 'Package still contains the external GUI.'
         Assert (-not ($entryNames -contains 'PalBoombox/companion/import_music.ps1')) 'Package still contains the external picker.'
@@ -228,6 +267,7 @@ try {
     try {
         $manualEntries = @($manualArchive.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
         Assert ($manualEntries -contains 'MANUAL-INSTALL.txt') 'Manual archive is missing its instructions.'
+        Assert ($manualEntries -contains 'Uninstall-PalWhip.ps1') 'Manual archive is missing the uninstaller.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalWhip/Scripts/main.lua') 'Manual archive is missing PalWhip.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalBoombox/Scripts/main.lua') 'Manual archive is missing PalBoombox.'
         Assert ($manualEntries -contains 'Pal/Binaries/Win64/ue4ss/Mods/PalSchema/mods/PalWhipItem/items/palwhip.json') 'Manual archive is missing PalWhipItem.'
