@@ -50,15 +50,16 @@ local config = {
 
     -- Share your boombox with other players via tagged in-game chat
     -- messages ("[BBX] ..."). Everyone who has this mod installed hears
-    -- the same track from the same spot and sees the marker. Music files
-    -- are matched by filename, so custom songs must exist in everyone's
-    -- music folder.
+    -- the same track from the same spot. Music files are matched by filename,
+    -- so custom songs must exist in everyone's music folder.
     ShareWithOtherPlayers = true,
 
-    -- Spawn Palworld's own 1970s radio prop at the boombox spot. The host
-    -- first creates a replicated actor; each modded client also applies the
-    -- radio mesh locally so it stays visible if replication is delayed.
-    SpawnMarker = true,
+    -- EXPERIMENTAL: spawn Palworld's own 1970s radio prop at the boombox spot.
+    -- Keep this false. Actor spawning currently causes an access-violation
+    -- crash in UE4SS on the July 2026 Palworld build. The synchronized spatial
+    -- audio works without the visual prop. This new option deliberately does
+    -- not honor the older SpawnMarker setting, keeping upgraded installs safe.
+    ExperimentalWorldMarker = false,
 
     -- Advanced appearance controls. These defaults use assets already shipped
     -- with Palworld, so no custom cooked .pak is required.

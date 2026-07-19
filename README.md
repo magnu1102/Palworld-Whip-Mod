@@ -151,16 +151,16 @@ Craft the **Boombox** at a Primitive Workbench (20× Wood + 10× Stone), then:
   in-game hint introduces this menu after installation.
 - **F9** — set the boombox down where you stand / pick it back up. The music stays at
   that spot: walk away and it fades with distance; turn your camera and it pans between
-  your left and right ear. Palworld's own 1970s radio prop appears on the ground where
-  you placed it.
+  your left and right ear. The in-world radio prop is temporarily disabled because actor
+  spawning crashes the July 2026 Palworld/UE4SS build; audio placement still works.
 - **F10** — next track.
 - **F11** — open a Windows music picker over the game. Select one or more `.mp3`, `.wav`,
   or `.wma` files and PalBoombox copies them into its music folder automatically.
 
-In hosted co-op, the host first creates a replicated world actor and each modded player
-applies the radio mesh when it arrives (with a local fallback). Players with PalBoombox
-installed receive the position, track, and start time through tagged global chat events,
-seek to the same playback point, and hear one shared source from that world position.
+In hosted co-op, players with PalBoombox installed receive the position, track, and start
+time through tagged global chat events, seek to the same playback point, and hear one
+shared source from that world position. The visible replicated prop is disabled for
+stability until its native actor-spawn path can be replaced.
 Custom tracks are matched by filename and must exist in every listener's `music` folder.
 
 It ships with four hand-arranged 8-bit-style instrumental sea shanties, synthesized from
@@ -190,8 +190,8 @@ Palworld closes.
 
 Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
 keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
-item requirement, companion auto-start, multiplayer sharing, marker mesh/scale/ground
-offset, and whether the one-time Pal Tools hint is shown.
+item requirement, companion auto-start, multiplayer sharing, the disabled experimental
+marker controls, and whether the one-time Pal Tools hint is shown.
 
 ## How it works
 

@@ -1,9 +1,9 @@
--- PalBoombox - a placeable boombox with spatial audio sea shanties,
--- multiplayer sync, and a visible in-world marker.
+-- PalBoombox - a placeable boombox with spatial audio sea shanties and
+-- multiplayer sync. The experimental in-world marker is disabled by default.
 --
--- Place (default F9): the boombox is set down where you stand, a 1970s radio
--- prop appears at the spot, and a tagged chat message tells every
--- other player's mod to start the same track at the same position.
+-- Place (default F9): the boombox is set down where you stand and a tagged
+-- chat message tells every other player's mod to start the same track at the
+-- same position. The 1970s radio prop remains available only for experiments.
 -- Pick up (F9 again) removes it for everyone. F10 = next track.
 --
 -- Audio plays through a local companion process (see companion/) on each
@@ -29,7 +29,11 @@ local PAN_STRENGTH   = config.PanStrength    or 0.8
 local AUTO_START     = (config.AutoStartCompanion ~= false)
 local ANNOUNCE       = (config.Announce      ~= false)
 local SHARE          = (config.ShareWithOtherPlayers ~= false)
-local SPAWN_MARKER   = (config.SpawnMarker   ~= false)
+-- Actor spawning through the current UE4SS/Palworld combination can hard-crash
+-- inside the native Lua bridge (an access violation cannot be caught by pcall).
+-- Use a new explicit opt-in so older configs that contain SpawnMarker=true, or
+-- do not mention markers at all, remain safe after updating.
+local SPAWN_MARKER   = (config.ExperimentalWorldMarker == true)
 local MARKER_CLASS   = config.MarkerClass
     or "/Script/Engine.StaticMeshActor"
 local MARKER_MESH    = config.MarkerMesh
