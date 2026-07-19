@@ -13,7 +13,9 @@ $root = Split-Path $PSScriptRoot -Parent
 $ipcDir = Join-Path $root 'ipc'
 $commandFile = Join-Path $ipcDir 'menu_command.txt'
 $showFile = Join-Path $ipcDir 'menu_show.txt'
+$volumeFile = Join-Path $ipcDir 'volume.txt'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$invariantCulture = [Globalization.CultureInfo]::InvariantCulture
 New-Item -ItemType Directory -Force $ipcDir | Out-Null
 
 $whipKeyFile = Join-Path $ipcDir 'whip_key.txt'
@@ -38,6 +40,21 @@ function Send-Command([string]$command) {
         "seq=$([DateTime]::UtcNow.Ticks)"
     )
     [IO.File]::WriteAllText($commandFile, ($lines -join "`n"), $utf8NoBom)
+}
+
+function Get-SavedVolumePercent {
+    if (Test-Path -LiteralPath $volumeFile) {
+        $text = [IO.File]::ReadAllText($volumeFile, [Text.Encoding]::UTF8).Trim()
+        $value = 0.0
+        if ([double]::TryParse(
+            $text,
+            [Globalization.NumberStyles]::Float,
+            $invariantCulture,
+            [ref]$value)) {
+            return [int][math]::Round([math]::Max(0.0, [math]::Min(2.0, $value)) * 100)
+        }
+    }
+    return 80
 }
 
 [xml]$xaml = @'
@@ -100,8 +117,8 @@ function Send-Command([string]$command) {
             <ColumnDefinition Width="48"/>
             <ColumnDefinition Width="48"/>
           </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="Listening volume" VerticalAlignment="Center" Foreground="#D1D5DB"/>
-          <Button Grid.Column="1" x:Name="VolumeDownButton" Content="−" Margin="0,0,3,0" Padding="6,5" FontSize="17" Background="#475569"/>
+          <TextBlock Grid.Column="0" x:Name="VolumeValueText" Text="Listening volume: 80%" VerticalAlignment="Center" Foreground="#D1D5DB"/>
+          <Button Grid.Column="1" x:Name="VolumeDownButton" Content="-" Margin="0,0,3,0" Padding="6,5" FontSize="17" Background="#475569"/>
           <Button Grid.Column="2" x:Name="VolumeUpButton" Content="+" Margin="3,0,0,0" Padding="6,5" FontSize="17" Background="#475569"/>
         </Grid>
       </StackPanel>
@@ -130,6 +147,7 @@ try {
     $musicButton = $window.FindName('MusicButton')
     $volumeDownButton = $window.FindName('VolumeDownButton')
     $volumeUpButton = $window.FindName('VolumeUpButton')
+    $volumeValueText = $window.FindName('VolumeValueText')
     $closeButton = $window.FindName('CloseButton')
     $statusText = $window.FindName('StatusText')
     $window.FindName('WhipHint').Text = "Equip the whip, then click below. Shortcut: $WhipKey"
@@ -139,6 +157,14 @@ try {
         Write-Output 'Pal Tools XAML: OK'
         exit 0
     }
+
+    $script:displayedVolume = Get-SavedVolumePercent
+    function Update-VolumeDisplay {
+        $volumeValueText.Text = "Listening volume: $($script:displayedVolume)%"
+        $volumeDownButton.IsEnabled = $script:displayedVolume -gt 0
+        $volumeUpButton.IsEnabled = $script:displayedVolume -lt 200
+    }
+    Update-VolumeDisplay
 
     $whipButton.Add_Click({
         Send-Command 'whip'
@@ -157,12 +183,24 @@ try {
         $window.Close()
     })
     $volumeDownButton.Add_Click({
+        if ($script:displayedVolume -le 0) {
+            $statusText.Text = 'Listening volume is already at minimum (0%).'
+            return
+        }
+        $script:displayedVolume = [math]::Max(0, $script:displayedVolume - 10)
         Send-Command 'volume_down'
-        $statusText.Text = 'Listening volume decreased by 10%.'
+        Update-VolumeDisplay
+        $statusText.Text = "Listening volume set to $($script:displayedVolume)%."
     })
     $volumeUpButton.Add_Click({
+        if ($script:displayedVolume -ge 200) {
+            $statusText.Text = 'Listening volume is already at maximum boost (200%).'
+            return
+        }
+        $script:displayedVolume = [math]::Min(200, $script:displayedVolume + 10)
         Send-Command 'volume_up'
-        $statusText.Text = 'Listening volume increased by 10%.'
+        Update-VolumeDisplay
+        $statusText.Text = "Listening volume set to $($script:displayedVolume)%."
     })
     $closeButton.Add_Click({ $window.Close() })
 

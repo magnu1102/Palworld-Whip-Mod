@@ -58,6 +58,9 @@ try {
         Assert ($controlPanel.Contains($volumeCommand)) "Pal Tools is missing volume command: $volumeCommand"
     }
     Assert ($boomboxLua.Contains('ipc/volume.txt')) 'Listening volume is not persisted between sessions.'
+    Assert ($controlPanel.Contains('Content="-"')) 'Volume-down button is not using an encoding-safe ASCII label.'
+    Assert ($controlPanel.Contains('VolumeValueText')) 'Pal Tools does not display the current listening volume.'
+    Assert ($controlPanel.Contains('IsEnabled = $script:displayedVolume -lt 200')) 'Volume boost is not available up to 200%.'
 
     Write-Host 'Testing culture-invariant companion values...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `

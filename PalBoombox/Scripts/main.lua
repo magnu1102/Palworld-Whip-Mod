@@ -28,7 +28,7 @@ local MENU_KEY       = config.MenuKey        or "F6"
 local SHOW_WELCOME   = (config.ShowWelcomeHint ~= false)
 local REQUIRE_ITEM   = (config.RequireItem   ~= false)
 local ITEM_ID        = config.ItemId         or "PalBoombox"
-local masterVolume   = clamp(config.MasterVolume or 0.8, 0.0, 1.0)
+local masterVolume   = clamp(config.MasterVolume or 0.8, 0.0, 2.0)
 local REF_DIST       = math.max(1.0, tonumber(config.RefDistance) or 800.0)
 local MAX_DIST       = math.max(REF_DIST + 1.0, tonumber(config.MaxDistance) or 8000.0)
 local PAN_STRENGTH   = clamp(config.PanStrength or 0.8, 0.0, 1.0)
@@ -181,7 +181,7 @@ local function loadSavedVolume()
     if not f then return end
     local saved = tonumber(f:read("*l"))
     f:close()
-    if saved then masterVolume = clamp(saved, 0.0, 1.0) end
+    if saved then masterVolume = clamp(saved, 0.0, 2.0) end
 end
 
 local function saveVolume()
@@ -581,7 +581,17 @@ local function openControlPanel()
 end
 
 local function changeVolume(delta)
-    masterVolume = clamp(masterVolume + delta, 0.0, 1.0)
+    local previousVolume = masterVolume
+    masterVolume = clamp(masterVolume + delta, 0.0, 2.0)
+    if math.abs(masterVolume - previousVolume) < 0.001 then
+        local pawn = getPawn()
+        if pawn then
+            local limit = delta > 0 and "maximum" or "minimum"
+            announce(pawn, string.format("Boombox listening volume is already at %s (%d%%).",
+                limit, math.floor(masterVolume * 100 + 0.5)))
+        end
+        return
+    end
     saveVolume()
     local pawn = getPawn()
     if pawn then

@@ -25,7 +25,8 @@ local config = {
     RequireItem = true,
     ItemId = "PalBoombox",
 
-    -- Overall loudness (0..1).
+    -- Overall loudness (0..2). Values above 1 boost the signal before
+    -- spatial distance falloff; the final Windows audio output remains capped.
     MasterVolume = 0.8,
 
     -- Distance (cm) at which the music starts to fade. 800 = 8 m.

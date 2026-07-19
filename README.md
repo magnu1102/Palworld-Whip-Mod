@@ -198,7 +198,7 @@ Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/confi
 keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
 item requirement, companion auto-start, multiplayer sharing, and whether the one-time
 Pal Tools hint is shown. The F6 volume buttons change and remember a per-player listening
-volume without forcing another player's PC louder. The unsafe native marker path has been
+volume from 0% through 200% boost without forcing another player's PC louder. The unsafe native marker path has been
 removed completely.
 
 ## How it works
