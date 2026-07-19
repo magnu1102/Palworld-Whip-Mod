@@ -3,9 +3,13 @@ PalWhip.zip
 node_modules/
 package.json
 package-lock.json
+__pycache__/
+*.pyc
 
-# Generated audio (rebuild with: python tools/make_shanties.py)
-PalBoombox/music/*.wav
+# Generated and personal audio (bundled shanties rebuild with
+# python tools/make_shanties.py). Personal tracks belong only in the installed
+# mod folder and must never be committed or published.
+PalBoombox/music/*
 
 # Runtime IPC files
 PalBoombox/ipc/state.txt

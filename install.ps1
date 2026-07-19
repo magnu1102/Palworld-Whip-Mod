@@ -15,7 +15,12 @@
 #
 # Optional: .\install.ps1 -GamePath "D:\SteamLibrary\steamapps\common\Palworld"
 #           -SkipGameCheck  (install even while Palworld is running, e.g. to another copy)
-param([string]$GamePath, [switch]$SkipGameCheck)
+param(
+    [string]$GamePath,
+    [switch]$SkipGameCheck,
+    # Regression-test only: bypass UAC for a disposable game tree under TEMP.
+    [switch]$TestNoElevation
+)
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -26,7 +31,15 @@ $ErrorActionPreference = 'Stop'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+if ($TestNoElevation) {
+    if (-not $GamePath) { throw '-TestNoElevation requires -GamePath.' }
+    $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    $testGamePath = [IO.Path]::GetFullPath($GamePath).TrimEnd('\') + '\'
+    if (-not $testGamePath.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '-TestNoElevation is restricted to disposable paths under TEMP.'
+    }
+}
+if (-not $isAdmin -and -not $TestNoElevation) {
     $elevatedArgs = @(
         '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-File', ('"{0}"' -f $PSCommandPath)
@@ -160,6 +173,26 @@ if (Test-Path (Join-Path $palSchemaDir 'dlls\main.dll')) {
 # --- 4. The mods -----------------------------------------------------------
 Step 'PalWhip + PalBoombox mods'
 
+$boomboxSource = Join-Path $src 'PalBoombox'
+$boomboxTarget = Join-Path $modsDir 'PalBoombox'
+$targetMusic = Join-Path $boomboxTarget 'music'
+
+# Snapshot every existing file in the personal music folder. The merge below
+# never writes an existing music filename; this postcondition makes that
+# promise executable and causes the installer to fail loudly if it is ever
+# broken by a future change.
+$existingMusic = @{}
+if (Test-Path -LiteralPath $targetMusic) {
+    $musicPrefix = $targetMusic.TrimEnd('\') + '\'
+    Get-ChildItem -LiteralPath $targetMusic -Recurse -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($musicPrefix.Length)
+        $existingMusic[$relativePath] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    if ($existingMusic.Count -gt 0) {
+        Ok "$($existingMusic.Count) existing music file(s) protected"
+    }
+}
+
 # Keep user-edited settings across upgrades. New options still receive their
 # defaults in Lua when they are absent from an older preserved config.
 $preservedConfigs = @(
@@ -178,12 +211,11 @@ foreach ($configFile in $preservedConfigs) {
     }
 }
 
+try {
 Copy-Item (Join-Path $src 'PalWhip') $modsDir -Recurse -Force
 
 # Merge the boombox update without replacing any existing music file. This
 # preserves imported songs and user replacements that share a bundled name.
-$boomboxSource = Join-Path $src 'PalBoombox'
-$boomboxTarget = Join-Path $modsDir 'PalBoombox'
 New-Item -ItemType Directory -Force $boomboxTarget | Out-Null
 Get-ChildItem -LiteralPath $boomboxSource -Force |
     Where-Object { $_.Name -ne 'music' } |
@@ -192,7 +224,6 @@ Get-ChildItem -LiteralPath $boomboxSource -Force |
     }
 
 $sourceMusic = Join-Path $boomboxSource 'music'
-$targetMusic = Join-Path $boomboxTarget 'music'
 New-Item -ItemType Directory -Force $targetMusic | Out-Null
 Get-ChildItem -LiteralPath $sourceMusic -File -ErrorAction SilentlyContinue |
     ForEach-Object {
@@ -202,16 +233,33 @@ Get-ChildItem -LiteralPath $sourceMusic -File -ErrorAction SilentlyContinue |
         }
     }
 
-foreach ($configFile in $preservedConfigs) {
-    if (Test-Path -LiteralPath $configFile.Backup) {
-        Copy-Item -LiteralPath $configFile.Backup -Destination $configFile.Installed -Force
+foreach ($relativePath in $existingMusic.Keys) {
+    $preservedFile = Join-Path $targetMusic $relativePath
+    if (-not (Test-Path -LiteralPath $preservedFile)) {
+        Fail "Music preservation check failed: '$relativePath' was removed."
     }
+    $preservedHash = (Get-FileHash -LiteralPath $preservedFile -Algorithm SHA256).Hash
+    if ($preservedHash -ne $existingMusic[$relativePath]) {
+        Fail "Music preservation check failed: '$relativePath' was changed."
+    }
+}
+if ($existingMusic.Count -gt 0) {
+    Ok 'Existing music verified unchanged'
 }
 
 $schemaMods = Join-Path $palSchemaDir 'mods'
 New-Item -ItemType Directory -Force $schemaMods | Out-Null
 Copy-Item (Join-Path $src 'PalWhipItem') $schemaMods -Recurse -Force
 Copy-Item (Join-Path $src 'PalBoomboxItem') $schemaMods -Recurse -Force
+} finally {
+    # A failed dependency/mod copy must never strand the bundled config over
+    # the user's settings. PowerShell executes finally even during exit/error.
+    foreach ($configFile in $preservedConfigs) {
+        if (Test-Path -LiteralPath $configFile.Backup) {
+            Copy-Item -LiteralPath $configFile.Backup -Destination $configFile.Installed -Force
+        }
+    }
+}
 Ok 'Mods installed'
 Ok 'Existing settings and custom music preserved'
 

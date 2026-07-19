@@ -14,13 +14,13 @@ end
 
 -- Defaults in case config.lua is missing or partially edited.
 local WHIP_KEY      = config.WhipKey       or "F7"
-local RANGE         = config.Range         or 9000.0
+local RANGE         = math.max(0.0, tonumber(config.Range) or 9000.0)
 local OWNED_ONLY    = (config.OwnedOnly    ~= false)
 local CURE_SICKNESS = (config.CureSickness ~= false)
 local RESTORE_SAN   = (config.RestoreSanity ~= false)
 local HEAL_HP       = (config.HealHP       ~= false)
 local FILL_STOMACH  = (config.FillStomach  == true)
-local COOLDOWN      = config.Cooldown      or 1.0
+local COOLDOWN      = math.max(0.0, tonumber(config.Cooldown) or 1.0)
 local ANNOUNCE      = (config.Announce     ~= false)
 -- "equipped": whip must be in your hands | "inventory": just carried | "none": no item needed
 local ITEM_REQUIREMENT = config.ItemRequirement or "equipped"
@@ -30,6 +30,9 @@ local PLAY_SOUND    = (config.PlaySound    ~= false)
 local SOUND_ID      = config.SoundID       or ""
 local SOUND_EVENT   = config.SoundEventName or ""
 local SOUND_PATTERNS = config.SoundEventPatterns or { "whip", "attack_hit", "melee", "swing", "decide" }
+if type(SOUND_PATTERNS) ~= "table" then
+    SOUND_PATTERNS = { "whip", "attack_hit", "melee", "swing", "decide" }
+end
 local SOUND_DUMP_KEY = config.SoundDumpKey or "F8"
 
 local DEBUG         = (config.Debug        == true)
@@ -293,7 +296,7 @@ local function crackWhip()
     local ploc = tryGet(function() return pawn:K2_GetActorLocation() end)
     local rangeSq = RANGE > 0 and (RANGE * RANGE) or nil
 
-    local pals = FindAllOf("PalCharacter") or {}
+    local pals = tryGet(function() return FindAllOf("PalCharacter") end) or {}
     local cured, seen = 0, 0
 
     for _, pal in ipairs(pals) do

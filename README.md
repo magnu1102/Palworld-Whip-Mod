@@ -52,7 +52,8 @@ Accept the Windows administrator prompt and the installer handles everything els
 Steam and Palworld, downloads UE4SS and PalSchema from their official GitHub releases when
 needed, applies the required settings, and installs all four mod parts. It is safe to run
 again when updating—the installer preserves your configuration and every existing music
-file, while skipping dependencies already present. No uninstall is needed.
+file, verifies those files are byte-for-byte unchanged, and skips dependencies already
+present. No uninstall is needed.
 
 For an unusual portable installation that Steam discovery cannot find, advanced users can
 run `install.ps1 -GamePath "D:\path\to\Palworld"` from PowerShell.
@@ -172,9 +173,10 @@ the traditional (public-domain) melodies by [tools/make_shanties.py](tools/make_
 - *Drunken Sailor*
 
 **Add your own music:** press F11 in-game and select as many `.mp3`, `.wav`, or `.wma`
-files as you want. The picker safely copies them into `PalBoombox\music\`; name collisions
-get a numbered suffix instead of overwriting an existing song. You can still copy files
-into that folder manually. F10 cycles through every available track alphabetically.
+files as you want. The picker safely copies them into the installed `PalBoombox\music\`
+folder. Identical files are skipped; different songs with the same filename get a numbered
+suffix instead of overwriting anything. F10 cycles through every available track
+alphabetically. Personal imports are never included in GitHub release packages.
 
 ### How the spatial audio works
 
@@ -190,8 +192,8 @@ Palworld closes.
 
 Boombox config lives in [PalBoombox/Scripts/config.lua](PalBoombox/Scripts/config.lua):
 keys, master volume, falloff distances (`RefDistance`/`MaxDistance`), pan strength,
-item requirement, companion auto-start, multiplayer sharing, the disabled experimental
-marker controls, and whether the one-time Pal Tools hint is shown.
+item requirement, companion auto-start, multiplayer sharing, and whether the one-time
+Pal Tools hint is shown. The unsafe native marker path has been removed completely.
 
 ## How it works
 
@@ -208,8 +210,9 @@ marker controls, and whether the one-time Pal Tools hint is shown.
   fields on each pal's `PalIndividualCharacterParameter.SaveParameter`:
   `WorkerSick → None`, `SanityValue → 100`, `HP → GetMaxHP()`, `FullStomach → max`.
 
-Every game-API access is wrapped in `pcall`, so if a Palworld update renames a field the mod
-degrades gracefully (skips that fix and logs) instead of crashing the game.
+Ordinary game-API calls are guarded with `pcall`, so renamed fields generally degrade to a
+logged error. Native access violations occur below Lua and cannot be caught this way; the
+actor-spawn path that caused such a crash has therefore been removed, not merely hidden.
 
 ## Multiplayer (hosted co-op)
 
@@ -258,11 +261,11 @@ PalBoombox/                    # UE4SS Lua mod (boombox)
 ├── enabled.txt
 ├── Scripts/main.lua, config.lua
 ├── companion/boombox_companion.ps1   # spatial audio player process
-├── music/*.wav                # shanties (generated; add your own files here)
+├── music/*.wav                # generated public-domain shanties only
 └── ipc/                       # runtime state files (mod <-> companion)
 PalBoomboxItem/                # PalSchema mod (boombox item + icon)
 ├── items/palboombox.json
-└── resources/images/boombox.png
+└── resources/images/boombox-v2.png
 tools/make_icon.ps1            # regenerates the whip icon
 tools/make_boombox_icon.ps1    # regenerates the boombox icon
 tools/make_shanties.py         # regenerates the shanty WAVs

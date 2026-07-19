@@ -47,6 +47,22 @@ function Get-AvailableDestination([string]$sourcePath) {
     throw "Could not find a free filename for '$name'."
 }
 
+function Find-IdenticalTrack([string]$sourcePath) {
+    $source = Get-Item -LiteralPath $sourcePath -ErrorAction Stop
+    $sourceHash = $null
+    foreach ($existing in (Get-ChildItem -LiteralPath $musicDir -File -ErrorAction SilentlyContinue)) {
+        if ($existing.Length -ne $source.Length) { continue }
+        if (-not $sourceHash) {
+            $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
+        }
+        $existingHash = (Get-FileHash -LiteralPath $existing.FullName -Algorithm SHA256).Hash
+        if ([string]::Equals($sourceHash, $existingHash, [StringComparison]::OrdinalIgnoreCase)) {
+            return $existing.FullName
+        }
+    }
+    return $null
+}
+
 try {
     $selectedFiles = $SourceFiles
     if (-not $selectedFiles -or $selectedFiles.Count -eq 0) {
@@ -66,10 +82,17 @@ try {
         $selectedFiles = $dialog.FileNames
     }
 
-    $available = New-Object System.Collections.Generic.List[string]
+    $imported = New-Object System.Collections.Generic.List[string]
+    $alreadyPresent = New-Object System.Collections.Generic.List[string]
     foreach ($sourcePath in $selectedFiles) {
         $extension = [IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
         if ($extension -notin '.mp3', '.wav', '.wma') { continue }
+
+        $identical = Find-IdenticalTrack $sourcePath
+        if ($identical) {
+            $alreadyPresent.Add([IO.Path]::GetFileName($identical))
+            continue
+        }
 
         $destination = Get-AvailableDestination $sourcePath
         if (-not [string]::Equals(
@@ -78,15 +101,24 @@ try {
             [StringComparison]::OrdinalIgnoreCase)) {
             Copy-Item -LiteralPath $sourcePath -Destination $destination
         }
-        $available.Add([IO.Path]::GetFileName($destination))
+        $imported.Add([IO.Path]::GetFileName($destination))
     }
 
-    if ($available.Count -eq 0) {
+    if ($imported.Count -eq 0 -and $alreadyPresent.Count -gt 0) {
+        Write-ImportResult 'unchanged' 0 ("Already present: " + ($alreadyPresent -join ', '))
+        exit 0
+    }
+
+    if ($imported.Count -eq 0) {
         Write-ImportResult 'error' 0 'No supported audio files were selected.'
         exit 1
     }
 
-    Write-ImportResult 'imported' $available.Count ($available -join ', ')
+    $message = $imported -join ', '
+    if ($alreadyPresent.Count -gt 0) {
+        $message += "; already present: " + ($alreadyPresent -join ', ')
+    }
+    Write-ImportResult 'imported' $imported.Count $message
 } catch {
     Write-ImportResult 'error' 0 $_.Exception.Message
     exit 1

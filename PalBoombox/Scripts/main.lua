@@ -1,9 +1,10 @@
 -- PalBoombox - a placeable boombox with spatial audio sea shanties and
--- multiplayer sync. The experimental in-world marker is disabled by default.
+-- multiplayer sync. The in-world marker is disabled because native actor
+-- spawning is unsafe on the current Palworld/UE4SS build.
 --
 -- Place (default F9): the boombox is set down where you stand and a tagged
 -- chat message tells every other player's mod to start the same track at the
--- same position. The 1970s radio prop remains available only for experiments.
+-- same position. No native actor is spawned by this release.
 -- Pick up (F9 again) removes it for everyone. F10 = next track.
 --
 -- Audio plays through a local companion process (see companion/) on each
@@ -15,6 +16,11 @@ local UEHelpers = require("UEHelpers")
 local ok_cfg, config = pcall(require, "config")
 if not ok_cfg or type(config) ~= "table" then config = {} end
 
+local function clamp(value, low, high)
+    value = tonumber(value) or low
+    return math.max(low, math.min(high, value))
+end
+
 local PLACE_KEY      = config.PlaceKey       or "F9"
 local NEXT_KEY       = config.NextTrackKey   or "F10"
 local ADD_MUSIC_KEY  = config.AddMusicKey    or "F11"
@@ -22,24 +28,13 @@ local MENU_KEY       = config.MenuKey        or "F6"
 local SHOW_WELCOME   = (config.ShowWelcomeHint ~= false)
 local REQUIRE_ITEM   = (config.RequireItem   ~= false)
 local ITEM_ID        = config.ItemId         or "PalBoombox"
-local MASTER_VOLUME  = config.MasterVolume   or 0.8
-local REF_DIST       = config.RefDistance    or 800.0
-local MAX_DIST       = config.MaxDistance    or 8000.0
-local PAN_STRENGTH   = config.PanStrength    or 0.8
+local MASTER_VOLUME  = clamp(config.MasterVolume or 0.8, 0.0, 1.0)
+local REF_DIST       = math.max(1.0, tonumber(config.RefDistance) or 800.0)
+local MAX_DIST       = math.max(REF_DIST + 1.0, tonumber(config.MaxDistance) or 8000.0)
+local PAN_STRENGTH   = clamp(config.PanStrength or 0.8, 0.0, 1.0)
 local AUTO_START     = (config.AutoStartCompanion ~= false)
 local ANNOUNCE       = (config.Announce      ~= false)
 local SHARE          = (config.ShareWithOtherPlayers ~= false)
--- Actor spawning through the current UE4SS/Palworld combination can hard-crash
--- inside the native Lua bridge (an access violation cannot be caught by pcall).
--- Use a new explicit opt-in so older configs that contain SpawnMarker=true, or
--- do not mention markers at all, remain safe after updating.
-local SPAWN_MARKER   = (config.ExperimentalWorldMarker == true)
-local MARKER_CLASS   = config.MarkerClass
-    or "/Script/Engine.StaticMeshActor"
-local MARKER_MESH    = config.MarkerMesh
-    or "/Game/Pal/Model/Prop/Furniture/Furnitures_Of_The_70s/SM_Radio_02.SM_Radio_02"
-local MARKER_SCALE   = config.MarkerScale or 1.0
-local MARKER_Z_OFFSET = config.MarkerZOffset or -90.0
 
 local TAG = "[BBX]"
 
@@ -55,10 +50,6 @@ local seq = 0
 local seekSeq = 0
 local pendingSeek = 0
 local loopRunning = false
-local markerActor = nil
-local markerName = nil
-local markerReplicated = false
-local markerMesh = nil
 local basePath = nil
 local lastCompanionStart = 0
 local warnedNoCompanion = false
@@ -140,8 +131,9 @@ local function readCompanion()
         if k == "track" then table.insert(found, v) end
     end
     f:close()
-    if #found > 0 then tracks = found end
-    return (os.time() - alive) < 8
+    local companionAlive = (os.time() - alive) < 8
+    if companionAlive then tracks = found end
+    return companionAlive
 end
 
 local function startCompanion()
@@ -234,154 +226,6 @@ local function decodeField(value)
     return (value:gsub("%%(%x%x)", function(hex)
         return string.char(tonumber(hex, 16))
     end))
-end
-
--- ---------------------------------------------------------------------------
--- In-world marker
--- ---------------------------------------------------------------------------
-
-local function actorName(actor)
-    return tryGet(function() return actor:GetFName():ToString() end)
-        or tryGet(function() return actor:GetName() end)
-end
-
-local function findMarkerByName()
-    if not markerName then return nil end
-    local className = MARKER_CLASS:match("%.([^%.]+)$")
-        or MARKER_CLASS:match("[./]([^./]+)$")
-    if not className then return nil end
-    local actors = tryGet(function() return FindAllOf(className) end) or {}
-    for _, actor in ipairs(actors) do
-        if actor and actor:IsValid() and actorName(actor) == markerName then
-            return actor
-        end
-    end
-    return nil
-end
-
-local function destroyMarker()
-    local actor = markerActor or findMarkerByName()
-    if actor then
-        pcall(function()
-            if actor:IsValid() then actor:K2_DestroyActor() end
-        end)
-    end
-    markerActor = nil
-    markerName = nil
-    markerReplicated = false
-end
-
-local function markerTransform(x, y, z)
-    return {
-        Rotation = { X = 0.0, Y = 0.0, Z = 0.0, W = 1.0 },
-        Translation = { X = x, Y = y, Z = z + MARKER_Z_OFFSET },
-        Scale3D = { X = MARKER_SCALE, Y = MARKER_SCALE, Z = MARKER_SCALE },
-    }
-end
-
-local function loadMarkerClass()
-    local cls = StaticFindObject(MARKER_CLASS)
-    if not cls or not cls:IsValid() then
-        local loaded = tryGet(function() return LoadAsset(MARKER_CLASS) end)
-        if loaded and loaded:IsValid() then cls = loaded end
-        if not cls or not cls:IsValid() then cls = StaticFindObject(MARKER_CLASS) end
-    end
-    return cls
-end
-
-local function loadMarkerMesh()
-    if not MARKER_MESH or MARKER_MESH == "" then return nil end
-    if markerMesh and markerMesh:IsValid() then return markerMesh end
-    markerMesh = StaticFindObject(MARKER_MESH)
-    if not markerMesh or not markerMesh:IsValid() then
-        markerMesh = tryGet(function() return LoadAsset(MARKER_MESH) end)
-    end
-    return markerMesh
-end
-
-local function applyMarkerMesh(actor)
-    if not actor or not actor:IsValid() then return false end
-    local mesh = loadMarkerMesh()
-    if not mesh or not mesh:IsValid() then
-        log("Marker mesh not found: " .. tostring(MARKER_MESH))
-        return false
-    end
-    local component = tryGet(function() return actor.StaticMeshComponent end)
-    if not component or not component:IsValid() then
-        log("Marker actor has no StaticMeshComponent")
-        return false
-    end
-    local ok = pcall(function() component:SetStaticMesh(mesh) end)
-    if not ok then
-        ok = pcall(function() component.StaticMesh = mesh end)
-    end
-    return ok
-end
-
-local function spawnLocalMarker(cls, transform)
-    local GS = StaticFindObject("/Script/Engine.Default__GameplayStatics")
-    local pawn = getPawn()
-    local actor = GS:BeginDeferredActorSpawnFromClass(pawn, cls, transform, 1, pawn)
-    if actor and actor:IsValid() then
-        GS:FinishSpawningActor(actor, transform)
-        markerActor = actor
-        applyMarkerMesh(actor)
-        return true
-    end
-    return false
-end
-
--- Returns R for a replicated marker, L for a local fallback, or N for none.
-local function spawnMarker(x, y, z, allowReplication)
-    if not SPAWN_MARKER then return "N" end
-    destroyMarker()
-    local ok, err = pcall(function()
-        local cls = loadMarkerClass()
-        if not cls or not cls:IsValid() then
-            error("marker class not found: " .. MARKER_CLASS)
-        end
-        local pawn = getPawn()
-        local transform = markerTransform(x, y, z)
-
-        -- SpawnActorBroadcast creates the actor on the authoritative host and
-        -- mirrors it to every client, including clients without PalBoombox.
-        local hasAuthority = tryGet(function() return pawn:HasAuthority() end)
-        if allowReplication and hasAuthority then
-            local PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
-            markerName = "PalBoomboxMarker_" .. TOKEN
-            local spawnGuid = {}
-            local spawnDelegate = {}
-            local networkOk, spawned = pcall(function()
-                return PalUtility:SpawnActorBroadcast(
-                    pawn, cls, pawn, pawn, FName(markerName), transform,
-                    nil, spawnGuid, spawnDelegate)
-            end)
-            if networkOk and spawned then
-                markerReplicated = true
-                ExecuteWithDelay(250, function()
-                    markerActor = findMarkerByName() or markerActor
-                    if markerActor then applyMarkerMesh(markerActor) end
-                end)
-                return
-            end
-            if not networkOk then
-                log("Network marker spawn unavailable; using local fallback: " .. tostring(spawned))
-            end
-            markerName = nil
-        end
-
-        if not spawnLocalMarker(cls, transform) then
-            error("local actor spawn returned nothing")
-        end
-    end)
-    if not ok then
-        log("Could not spawn boombox marker: " .. tostring(err))
-        markerActor = nil
-        markerName = nil
-        markerReplicated = false
-        return "N"
-    end
-    return markerReplicated and "R" or "L"
 end
 
 -- ---------------------------------------------------------------------------
@@ -479,31 +323,16 @@ local function handleTelegram(sender, text)
         local track = decodeField(encodedTrack)
         log(string.format("Sync: %s placed a boombox (%s)", sender or "?", track))
         readCompanion()
-        if active and active.own then
-            log("Ignoring remote boombox while our own is active")
-            return
-        end
-        if markerMode ~= "R" then
-            spawnMarker(tonumber(x), tonumber(y), tonumber(z), false)
-        else
-            destroyMarker()
-            markerName = "PalBoomboxMarker_" .. token
-            markerReplicated = true
-            local transform = markerTransform(tonumber(x), tonumber(y), tonumber(z))
-            ExecuteWithDelay(500, function()
-                markerActor = findMarkerByName()
-                if markerActor then
-                    applyMarkerMesh(markerActor)
-                else
-                    -- Replication can arrive after chat (or be unavailable on
-                    -- a particular game build). Every listening client has the
-                    -- mod, so guarantee the same visible prop locally.
-                    local cls = loadMarkerClass()
-                    markerName = nil
-                    markerReplicated = false
-                    if cls and cls:IsValid() then spawnLocalMarker(cls, transform) end
-                end
-            end)
+        local incomingEpoch = tonumber(epoch) or 0
+        if active then
+            local currentEpoch = tonumber(active.epoch) or 0
+            local incomingWins = incomingEpoch > currentEpoch
+                or (incomingEpoch == currentEpoch
+                    and tostring(token) > tostring(active.token or ""))
+            if not incomingWins then
+                log("Ignoring an older boombox sync event")
+                return
+            end
         end
         if not hasTrack(track) then
             if pawn then
@@ -527,7 +356,6 @@ local function handleTelegram(sender, text)
     if body == "S" then
         log(string.format("Sync: %s stopped the boombox", sender or "?"))
         if active and not active.own and active.token == token then
-            destroyMarker()
             stopPlayback()
             if pawn then announce(pawn, "The boombox falls silent.") end
         end
@@ -571,7 +399,6 @@ local function toggleBoombox()
 
     if active and active.own then
         stopPlayback()
-        destroyMarker()
         sendTelegram("S")
         announce(pawn, "Boombox picked up. The sea falls silent.")
         return
@@ -599,16 +426,17 @@ local function toggleBoombox()
 
     if trackIndex > #tracks then trackIndex = 1 end
     local track = tracks[trackIndex]
-    local epoch = os.time()
+    local epoch = math.max(os.time(), active and (tonumber(active.epoch) or 0) + 1 or 0)
 
     startPlayback({
         x = loc.X, y = loc.Y, z = loc.Z, track = track,
         epoch = epoch, own = true, token = TOKEN,
     })
-    local markerMode = spawnMarker(loc.X, loc.Y, loc.Z, true)
+    log("Placement: local spatial playback started")
     sendTelegram(string.format("P %d %d %d %s %d %s",
         math.floor(loc.X), math.floor(loc.Y), math.floor(loc.Z),
-        encodeField(track), epoch, markerMode))
+        encodeField(track), epoch, "N"))
+    log("Placement: multiplayer sync event sent")
 
     announce(pawn, string.format("Boombox set down - now playing: %s", prettyTrackName(track)))
 end
@@ -625,13 +453,12 @@ local function nextTrack()
     if active and active.own then
         -- Re-place in spirit: same spot, new track, fresh epoch, tell everyone.
         active.track = tracks[trackIndex]
-        active.epoch = os.time()
+        active.epoch = math.max(os.time(), (tonumber(active.epoch) or 0) + 1)
         pendingSeek = 0
         seekSeq = seekSeq + 1
-        local markerMode = markerReplicated and "R" or (markerActor and "L" or "N")
         sendTelegram(string.format("P %d %d %d %s %d %s",
             math.floor(active.x), math.floor(active.y), math.floor(active.z),
-            encodeField(active.track), active.epoch, markerMode))
+            encodeField(active.track), active.epoch, "N"))
         if pawn then
             announce(pawn, "Now playing: " .. prettyTrackName(active.track))
         end
@@ -695,6 +522,8 @@ local function addMusic()
                     end)
                 elseif result.status == "cancelled" then
                     announce(pawn, "Music import cancelled.")
+                elseif result.status == "unchanged" then
+                    announce(pawn, "That music is already in the boombox folder.")
                 else
                     announce(pawn, "Could not import music: " .. (result.message or "unknown error"))
                 end
@@ -805,5 +634,5 @@ scheduleWelcomeHint()
 
 writeState({ playing = 0 })
 
-log(string.format("Loaded. %s opens Pal Tools; %s places/picks up, %s switches tracks, %s adds music. Sync: %s, marker: %s.",
-    MENU_KEY, PLACE_KEY, NEXT_KEY, ADD_MUSIC_KEY, tostring(SHARE), tostring(SPAWN_MARKER)))
+log(string.format("Loaded. %s opens Pal Tools; %s places/picks up, %s switches tracks, %s adds music. Sync: %s, marker: disabled.",
+    MENU_KEY, PLACE_KEY, NEXT_KEY, ADD_MUSIC_KEY, tostring(SHARE)))

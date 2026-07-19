@@ -54,22 +54,9 @@ local config = {
     -- so custom songs must exist in everyone's music folder.
     ShareWithOtherPlayers = true,
 
-    -- EXPERIMENTAL: spawn Palworld's own 1970s radio prop at the boombox spot.
-    -- Keep this false. Actor spawning currently causes an access-violation
-    -- crash in UE4SS on the July 2026 Palworld build. The synchronized spatial
-    -- audio works without the visual prop. This new option deliberately does
-    -- not honor the older SpawnMarker setting, keeping upgraded installs safe.
-    ExperimentalWorldMarker = false,
-
-    -- Advanced appearance controls. These defaults use assets already shipped
-    -- with Palworld, so no custom cooked .pak is required.
-    MarkerClass = "/Script/Engine.StaticMeshActor",
-    MarkerMesh = "/Game/Pal/Model/Prop/Furniture/Furnitures_Of_The_70s/SM_Radio_02.SM_Radio_02",
-    MarkerScale = 1.0,
-
-    -- Player positions are measured at capsule centre. This drops the radio
-    -- roughly 90 cm so it rests on the floor instead of floating at waist height.
-    MarkerZOffset = -90.0,
+    -- The in-world prop is intentionally unavailable in this release. Native
+    -- actor spawning causes an uncatchable UE4SS access violation on the July
+    -- 2026 game build. Spatial audio placement does not require an actor.
 }
 
 return config
