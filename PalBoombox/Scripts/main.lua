@@ -35,6 +35,7 @@ local PAN_STRENGTH   = clamp(config.PanStrength or 0.8, 0.0, 1.0)
 local AUTO_START     = (config.AutoStartCompanion ~= false)
 local ANNOUNCE       = (config.Announce      ~= false)
 local SHARE          = (config.ShareWithOtherPlayers ~= false)
+local BUNDLED_ONLY   = (config.UseOnlyBundledTracksInMultiplayer ~= false)
 
 local TAG = "[BBX]"
 
@@ -46,6 +47,7 @@ local TOKEN = string.format("%d_%05d", os.time(), math.random(0, 99999))
 local active = nil   -- { x, y, z, track, epoch, own (bool) }
 local trackIndex = 1
 local tracks = {}
+local bundledTrackSet = nil
 local seq = 0
 local seekSeq = 0
 local pendingSeek = 0
@@ -172,6 +174,34 @@ local function hasTrack(name)
         if t == name then return true end
     end
     return false
+end
+
+local function loadBundledTrackSet()
+    if bundledTrackSet ~= nil then return bundledTrackSet end
+    bundledTrackSet = {}
+    local base = resolveBasePath()
+    if not base then return bundledTrackSet end
+    local f = io.open(base .. "bundled_tracks.txt", "r")
+    if not f then
+        log("WARNING: bundled track manifest is missing")
+        return bundledTrackSet
+    end
+    for line in f:lines() do
+        local name = line:gsub("\r$", "")
+        if name ~= "" then bundledTrackSet[name] = true end
+    end
+    f:close()
+    return bundledTrackSet
+end
+
+local function getSelectableTracks()
+    if not SHARE or not BUNDLED_ONLY then return tracks end
+    local bundled = loadBundledTrackSet()
+    local selected = {}
+    for _, name in ipairs(tracks) do
+        if bundled[name] then table.insert(selected, name) end
+    end
+    return selected
 end
 
 local function loadSavedVolume()
@@ -431,12 +461,13 @@ local function toggleBoombox()
 
     ensureCompanion()
     if #tracks == 0 then readCompanion() end
-    if #tracks == 0 then
+    local selectableTracks = getSelectableTracks()
+    if #selectableTracks == 0 then
         if not warnedNoCompanion then
             warnedNoCompanion = true
             announce(pawn, "Boombox: audio companion is starting, try again in a few seconds...")
         else
-            announce(pawn, "Boombox: no tracks found (is the companion running and the music folder populated?)")
+            announce(pawn, "Boombox: no shared release tracks found (reinstall the current release).")
         end
         return
     end
@@ -444,8 +475,8 @@ local function toggleBoombox()
     local loc = tryGet(function() return pawn:K2_GetActorLocation() end)
     if not loc then return end
 
-    if trackIndex > #tracks then trackIndex = 1 end
-    local track = tracks[trackIndex]
+    if trackIndex > #selectableTracks then trackIndex = 1 end
+    local track = selectableTracks[trackIndex]
     local epoch = math.max(os.time(), active and (tonumber(active.epoch) or 0) + 1 or 0)
 
     startPlayback({
@@ -463,16 +494,17 @@ end
 
 local function nextTrack()
     readCompanion()
-    if #tracks == 0 then
+    local selectableTracks = getSelectableTracks()
+    if #selectableTracks == 0 then
         log("No tracks available yet")
         return
     end
-    trackIndex = (trackIndex % #tracks) + 1
+    trackIndex = (trackIndex % #selectableTracks) + 1
     local pawn = getPawn()
 
     if active and active.own then
         -- Re-place in spirit: same spot, new track, fresh epoch, tell everyone.
-        active.track = tracks[trackIndex]
+        active.track = selectableTracks[trackIndex]
         active.epoch = math.max(os.time(), (tonumber(active.epoch) or 0) + 1)
         pendingSeek = 0
         seekSeq = seekSeq + 1
@@ -484,7 +516,7 @@ local function nextTrack()
         end
     else
         if pawn then
-            announce(pawn, "Next up: " .. prettyTrackName(tracks[trackIndex]))
+            announce(pawn, "Next up: " .. prettyTrackName(selectableTracks[trackIndex]))
         end
     end
 end

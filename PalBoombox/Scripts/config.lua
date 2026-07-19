@@ -55,6 +55,12 @@ local config = {
     -- every machine; non-bundled songs must still be copied to each listener.
     ShareWithOtherPlayers = true,
 
+    -- In shared mode, F9/F10 use only the six files installed with the mod.
+    -- This prevents preserved personal/legacy tracks that only some players
+    -- own from producing different results on each PC. Set false only after
+    -- manually installing identical custom filenames for every player.
+    UseOnlyBundledTracksInMultiplayer = true,
+
     -- The in-world prop is intentionally unavailable in this release. Native
     -- actor spawning causes an uncatchable UE4SS access violation on the July
     -- 2026 game build. Spatial audio placement does not require an actor.

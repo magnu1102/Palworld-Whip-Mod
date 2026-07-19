@@ -180,7 +180,11 @@ bytes.
 files as you want. The picker safely copies them into the installed `PalBoombox\music\`
 folder. Identical files are skipped; different songs with the same filename get a numbered
 suffix instead of overwriting anything. F10 cycles through every available track
-alphabetically. Personal imports are never included in GitHub release packages.
+alphabetically when sharing is disabled. In the default multiplayer mode, F9/F10 use only
+the six bundled filenames guaranteed to exist for everyone; personal files remain preserved
+but are excluded from the shared playlist. Advanced users who install identical custom
+filenames on every PC can disable `UseOnlyBundledTracksInMultiplayer`. Personal imports are
+never included in GitHub release packages.
 
 ### How the spatial audio works
 
@@ -234,9 +238,11 @@ actor-spawn path that caused such a crash has therefore been removed, not merely
   audio. For a host and two friends, install the same current release on all three PCs.
   Each player then hears the same placed source, with volume and stereo pan calculated
   independently from that player's position and camera direction.
-- **Music files are still local.** The six bundled recordings are installed for everyone.
-  Any additional track needs the same filename in each listener's `PalBoombox\music`
-  folder. Missing custom tracks are reported in chat instead of playing the wrong song.
+- **Music files are still local.** The six bundled recordings are installed for everyone
+  and are the only tracks selected in shared mode by default. Preserved personal or legacy
+  files therefore cannot split the session into different listener combinations. Additional
+  tracks require the same filename on every PC and an explicit config opt-out from the
+  bundled-only shared playlist.
 - **One shared boombox is active at a time.** This version is designed as a single communal
   music source, not several independently playing radios. The sync path is implemented but
   still needs a live three-client gameplay pass after each Palworld update.

@@ -62,6 +62,16 @@ try {
     Assert ($controlPanel.Contains('VolumeValueText')) 'Pal Tools does not display the current listening volume.'
     Assert ($controlPanel.Contains('IsEnabled = $script:displayedVolume -lt 200')) 'Volume boost is not available up to 200%.'
 
+    Write-Host 'Checking deterministic shared-track selection...'
+    Assert ($boomboxLua.Contains('UseOnlyBundledTracksInMultiplayer')) 'Shared mode does not enable the bundled-only playlist.'
+    Assert ($boomboxLua.Contains('getSelectableTracks')) 'Boombox controls do not use a filtered shared playlist.'
+    $bundledManifest = @(
+        Get-Content -LiteralPath (Join-Path $repo 'PalBoombox\bundled_tracks.txt') -Encoding UTF8 |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ }
+    )
+    Assert ($bundledManifest.Count -eq 6) 'Bundled-track manifest must contain exactly six filenames.'
+
     Write-Host 'Testing culture-invariant companion values...'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
         (Join-Path $repo 'PalBoombox\companion\boombox_companion.ps1') -ValidateOnly
@@ -165,6 +175,7 @@ try {
         Assert (-not ($entryNames -contains 'Install PalWhip.bat')) 'Embedded payload still exposes the old batch launcher.'
         Assert ($entryNames -contains 'PalBoombox/companion/control_panel.ps1') 'Package is missing the GUI.'
         Assert ($entryNames -contains 'PalBoombox/companion/import_music.ps1') 'Package is missing the importer.'
+        Assert ($entryNames -contains 'PalBoombox/bundled_tracks.txt') 'Package is missing the shared-track manifest.'
         Assert ($entryNames -contains 'PalBoomboxItem/resources/images/boombox-v2.png') 'Package is missing the current icon.'
         $runtimeEntries = @($entryNames | Where-Object {
             $_ -match '^PalBoombox/ipc/(state|companion|import_result|menu_command|menu_show|welcome_seen|whip_key|volume)\.txt$'

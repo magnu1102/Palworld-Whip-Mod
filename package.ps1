@@ -17,6 +17,16 @@ $bundledTracks = [ordered]@{
     'Blow The Man Down (Sea Shanty) - Windrose.mp3' = 'D36AC94DFD2B13EDBA837261F756A8A8B878BD61936DD8C38588865246D70569'
     'Drunken Sailor (Sea Shanty) - Windrose.mp3' = 'A312EF92290EC100F8EA116238711E2BE530D249306FE52D685C71677F5D24DA'
 }
+$manifestPath = Join-Path $PSScriptRoot 'PalBoombox\bundled_tracks.txt'
+$manifestTracks = @(
+    Get-Content -LiteralPath $manifestPath -Encoding UTF8 |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+)
+if ($manifestTracks.Count -ne $bundledTracks.Count -or
+    @($manifestTracks | Where-Object { -not $bundledTracks.Contains($_) }).Count -ne 0) {
+    throw 'bundled_tracks.txt does not exactly match the reviewed release recordings.'
+}
 $unexpectedTracks = Get-ChildItem -LiteralPath $music -Recurse -File |
     Where-Object {
         $_.DirectoryName -ne $music -or -not $bundledTracks.Contains($_.Name)
